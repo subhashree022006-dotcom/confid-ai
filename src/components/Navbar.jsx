@@ -14,9 +14,9 @@ export default function Navbar() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-8 text-sm text-gray-300">
-          <a href="#modes" className="hover:text-white">Practice Modes</a>
-          <a href="#how" className="hover:text-white">How it works</a>
-          <a href="#pricing" className="hover:text-white">Pricing</a>
+          <Link to="/practice-modes" className="hover:text-white">Practice Modes</Link>
+          <Link to="/how-it-works" className="hover:text-white">How it works</Link>
+          <Link to="/pricing" className="hover:text-white">Pricing</Link>
         </nav>
 
         <div className="flex items-center gap-4">

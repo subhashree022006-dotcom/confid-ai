@@ -1,4 +1,7 @@
-﻿import { Routes, Route } from "react-router-dom";
+﻿import HowItWorks from "./pages/HowItWorks.jsx";
+import PracticeModes from "./pages/PracticeModes.jsx";
+import Pricing from "./pages/Pricing.jsx";
+import { Routes, Route } from "react-router-dom";
 import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
 import Signup from "./pages/Signup.jsx";
@@ -28,6 +31,10 @@ export default function App() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/how-it-works" element={<HowItWorks />} />
+      <Route path="/practice-modes" element={<PracticeModes />} />
+      <Route path="/pricing" element={<Pricing />} />
+
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
 
       <Route path="/interview" element={<ProtectedRoute><InterviewSetup /></ProtectedRoute>} />
