@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
 import Navbar from "../components/Navbar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchSessionHistory } from "../utils/sessionApi.js";
 
 const MODES = [
-  { title: "Interview", key: "interview", desc: "Mock HR interview scored on confidence, gestures, eye contact, communication, and hire probability.", path: "/interview", color: "from-blue-500/20 to-blue-500/0" },
-  { title: "Presentation", key: "presentation", desc: "Upload your slides, present to the camera, then face a short viva on your topic.", path: "/presentation", color: "from-cyan-500/20 to-cyan-500/0" },
-  { title: "Stage Speech", key: "stagespeech", desc: "Practice a stage speech with confidence, gesture and eye-contact scoring.", path: "/stagespeech", color: "from-yellow-500/20 to-yellow-500/0" },
-  { title: "Group Discussion", key: "gd", desc: "Join a simulated group discussion with AI participants and get evaluated.", path: "/gd", color: "from-emerald-500/20 to-emerald-500/0" },
+  { title: "Interview", key: "interview", desc: "Mock HR interview scored on confidence, gestures, eye contact, communication, and hire probability.", path: "/interview", color: "from-blue-500/20 to-blue-500/0", barColor: "#3b82f6" },
+  { title: "Presentation", key: "presentation", desc: "Upload your slides, present to the camera, then face a short viva on your topic.", path: "/presentation", color: "from-cyan-500/20 to-cyan-500/0", barColor: "#22d3ee" },
+  { title: "Stage Speech", key: "stagespeech", desc: "Practice a stage speech with confidence, gesture and eye-contact scoring.", path: "/stagespeech", color: "from-yellow-500/20 to-yellow-500/0", barColor: "#eab308" },
+  { title: "Group Discussion", key: "gd", desc: "Join a simulated group discussion with AI participants and get evaluated.", path: "/gd", color: "from-emerald-500/20 to-emerald-500/0", barColor: "#10b981" },
 ];
 
 const MODE_LABELS = {
@@ -38,8 +38,6 @@ export default function Dashboard() {
     ? Math.round(history.reduce((sum, s) => sum + (s.overall_score || 0), 0) / history.length)
     : null;
 
-  // Sessions for the selected mode, oldest first, so the chart reads left-to-right
-  // as "first attempt" through "most recent attempt".
   const modeTrend = useMemo(() => {
     return history
       .filter((s) => s.mode === selectedMode)
@@ -54,20 +52,61 @@ export default function Dashboard() {
 
   const modesWithData = new Set(history.map((s) => s.mode));
 
+  const modeAverages = useMemo(() => {
+    return MODES.map((m) => {
+      const sessions = history.filter((s) => s.mode === m.key);
+      const avg = sessions.length
+        ? Math.round(sessions.reduce((sum, s) => sum + (s.overall_score || 0), 0) / sessions.length)
+        : 0;
+      return { mode: m.title, key: m.key, avg, count: sessions.length, barColor: m.barColor };
+    });
+  }, [history]);
+
+  const isFree = user?.plan === "free";
+  const sessionsUsed = user?.sessionsUsed ?? 0;
+  const freeLimit = user?.freeSessionLimit ?? 4;
+  const sessionsLeft = Math.max(freeLimit - sessionsUsed, 0);
+  const canPractice = user?.canPractice ?? true;
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
       <main className="max-w-6xl mx-auto px-6 py-12">
         <p className="text-cyan-400 text-sm font-medium mb-2">Welcome back, {user?.userId}</p>
         <h1 className="text-3xl font-bold mb-1">What are you practicing today?</h1>
-        <p className="text-gray-400 mb-10">Choose a mode to begin a trial session.</p>
+        <p className="text-gray-400 mb-6">Choose a mode to begin a trial session.</p>
+
+        {isFree && (
+          <div className={`rounded-2xl border p-5 mb-10 flex items-center justify-between flex-wrap gap-4 ${
+            canPractice ? "border-cyan-400/30 bg-cyan-500/5" : "border-rose-400/30 bg-rose-500/5"
+          }`}>
+            <div>
+              <p className="font-medium">
+                {canPractice
+                  ? `${sessionsLeft} free session${sessionsLeft === 1 ? "" : "s"} remaining`
+                  : "You've used all your free sessions"}
+              </p>
+              <p className="text-sm text-gray-400">
+                {canPractice
+                  ? "Upgrade anytime to unlock unlimited practice across all modes."
+                  : "Upgrade to keep practicing across all 4 modes."}
+              </p>
+            </div>
+            <button
+              onClick={() => navigate("/pricing")}
+              className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90 whitespace-nowrap"
+            >
+              View plans
+            </button>
+          </div>
+        )}
 
         <div className="grid sm:grid-cols-2 gap-6 mb-12">
           {MODES.map((m) => (
             <button
               key={m.title}
-              onClick={() => navigate(m.path)}
-              className={`text-left rounded-2xl border border-white/10 bg-gradient-to-br ${m.color} p-7 hover:border-cyan-400/40 transition`}
+              onClick={() => canPractice ? navigate(m.path) : navigate("/pricing")}
+              className={`text-left rounded-2xl border border-white/10 bg-gradient-to-br ${m.color} p-7 hover:border-cyan-400/40 transition ${!canPractice ? "opacity-60" : ""}`}
             >
               <h3 className="text-xl font-semibold mb-2">{m.title}</h3>
               <p className="text-gray-400 text-sm">{m.desc}</p>
@@ -78,13 +117,44 @@ export default function Dashboard() {
         {!loadingHistory && history.length > 0 && (
           <div className="border-t border-white/10 pt-10 mb-12">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-              <h2 className="text-xl font-semibold">Progress over time</h2>
+              <h2 className="text-xl font-semibold">Average score by mode</h2>
               {avgScore !== null && (
                 <div className="text-right">
                   <p className="text-xs text-gray-500">Overall average</p>
                   <p className="text-2xl font-bold text-cyan-300">{avgScore}</p>
                 </div>
               )}
+            </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6" style={{ height: 280 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={modeAverages}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                  <XAxis dataKey="mode" stroke="rgba(255,255,255,0.5)" fontSize={12} />
+                  <YAxis domain={[0, 100]} stroke="rgba(255,255,255,0.5)" fontSize={12} />
+                  <Tooltip
+                    contentStyle={{ background: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}
+                    labelStyle={{ color: "#e5e7eb" }}
+                    formatter={(value, name, props) => [
+                      props.payload.count ? value : "No sessions yet",
+                      "Average score",
+                    ]}
+                  />
+                  <Bar dataKey="avg" radius={[6, 6, 0, 0]}>
+                    {modeAverages.map((entry) => (
+                      <Cell key={entry.key} fill={entry.count ? entry.barColor : "rgba(255,255,255,0.08)"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {!loadingHistory && history.length > 0 && (
+          <div className="border-t border-white/10 pt-10 mb-12">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <h2 className="text-xl font-semibold">Progress over time</h2>
             </div>
 
             <div className="flex gap-2 mb-5 flex-wrap">
