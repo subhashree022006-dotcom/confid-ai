@@ -1,6 +1,7 @@
 ﻿import HowItWorks from "./pages/HowItWorks.jsx";
 import PracticeModes from "./pages/PracticeModes.jsx";
 import Pricing from "./pages/Pricing.jsx";
+import NotFound from "./pages/NotFound.jsx";
 import { Routes, Route } from "react-router-dom";
 import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
@@ -53,6 +54,8 @@ export default function App() {
       <Route path="/gd" element={<ProtectedRoute><GDSetup /></ProtectedRoute>} />
       <Route path="/gd/session" element={<ProtectedRoute><GDSession /></ProtectedRoute>} />
       <Route path="/gd/results" element={<ProtectedRoute><GDResults /></ProtectedRoute>} />
+
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
