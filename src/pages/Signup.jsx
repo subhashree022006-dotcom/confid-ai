@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import Navbar from "../components/Navbar.jsx";
@@ -10,14 +10,18 @@ export default function Signup() {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!userId.trim() || password.length < 4) {
       setError("Enter a user ID and a password of at least 4 characters.");
       return;
     }
-    const result = signup(userId.trim(), password);
+    setError("");
+    setLoading(true);
+    const result = await signup(userId.trim(), password);
+    setLoading(false);
     if (!result.ok) { setError(result.error); return; }
     navigate("/dashboard");
   }
@@ -39,7 +43,9 @@ export default function Signup() {
               <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             {error && <p className="text-sm text-rose-400">{error}</p>}
-            <button className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90">Create account</button>
+            <button disabled={loading} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90 disabled:opacity-50">
+              {loading ? "Creating account..." : "Create account"}
+            </button>
           </form>
           <p className="text-sm text-gray-400 mt-5">Already have an account? <Link to="/login" className="text-cyan-300 font-medium">Log in</Link></p>
         </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import Navbar from "../components/Navbar.jsx";
@@ -10,10 +10,14 @@ export default function Login() {
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    const result = login(userId.trim(), password);
+    setError("");
+    setLoading(true);
+    const result = await login(userId.trim(), password);
+    setLoading(false);
     if (!result.ok) { setError(result.error); return; }
     navigate("/dashboard");
   }
@@ -35,7 +39,9 @@ export default function Login() {
               <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             {error && <p className="text-sm text-rose-400">{error}</p>}
-            <button className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90">Log in</button>
+            <button disabled={loading} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90 disabled:opacity-50">
+              {loading ? "Logging in..." : "Log in"}
+            </button>
           </form>
           <p className="text-sm text-gray-400 mt-5">New here? <Link to="/signup" className="text-cyan-300 font-medium">Create an account</Link></p>
         </div>

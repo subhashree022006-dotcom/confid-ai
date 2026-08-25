@@ -1,54 +1,81 @@
-import { createContext, useContext, useEffect, useState } from "react";
+﻿import { createContext, useContext, useEffect, useState } from "react";
 
 const AuthContext = createContext(null);
-const USERS_KEY = "confidai_users";
-const SESSION_KEY = "confidai_session";
-
-function loadUsers() {
-  return JSON.parse(localStorage.getItem(USERS_KEY) || "{}");
-}
-function saveUsers(users) {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
+const TOKEN_KEY = "confidai_token";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const session = localStorage.getItem(SESSION_KEY);
-    if (session) setUser(JSON.parse(session));
-    setLoading(false);
-  }, []);
-
-  function signup(userId, password) {
-    const users = loadUsers();
-    if (users[userId]) return { ok: false, error: "That user ID is already taken." };
-    users[userId] = { password, createdAt: Date.now() };
-    saveUsers(users);
-    const session = { userId };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    setUser(session);
-    return { ok: true };
+  async function fetchMe(token) {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Invalid session");
+      const data = await res.json();
+      setUser({ ...data, token });
+    } catch {
+      localStorage.removeItem(TOKEN_KEY);
+      setUser(null);
+    }
   }
 
-  function login(userId, password) {
-    const users = loadUsers();
-    const record = users[userId];
-    if (!record || record.password !== password) return { ok: false, error: "Invalid user ID or password." };
-    const session = { userId };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    setUser(session);
-    return { ok: true };
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      fetchMe(token).finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+  }, []);
+
+  async function signup(userId, password) {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { ok: false, error: data.error };
+      localStorage.setItem(TOKEN_KEY, data.token);
+      await fetchMe(data.token);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Could not reach the server. Please try again." };
+    }
+  }
+
+  async function login(userId, password) {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE}/api/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { ok: false, error: data.error };
+      localStorage.setItem(TOKEN_KEY, data.token);
+      await fetchMe(data.token);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Could not reach the server. Please try again." };
+    }
   }
 
   function logout() {
-    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
   }
 
+  async function refreshUser() {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) await fetchMe(token);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, signup, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, signup, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
