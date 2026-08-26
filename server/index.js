@@ -3,6 +3,8 @@ import cors from "cors";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import Razorpay from "razorpay";
+import crypto from "crypto";
 import OpenAI from "openai";
 import { pool, initDb } from "./db.js";
 
@@ -16,8 +18,18 @@ const groq = new OpenAI({
   baseURL: "https://api.groq.com/openai/v1",
 });
 
+const razorpay = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
 const JWT_SECRET = process.env.JWT_SECRET;
 const FREE_SESSION_LIMIT = 4;
+
+const PLANS = {
+  student: { amount: 29900, months: 6, label: "Student" },
+  regular: { amount: 79900, months: 6, label: "Regular" },
+};
 
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -101,6 +113,63 @@ app.get("/api/me", authMiddleware, async (req, res) => {
   } catch (err) {
     console.error("Fetch user failed:", err);
     res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
+
+app.post("/api/create-order", authMiddleware, async (req, res) => {
+  try {
+    const { planType } = req.body;
+    const plan = PLANS[planType];
+    if (!plan) return res.status(400).json({ error: "Invalid plan type" });
+
+    const order = await razorpay.orders.create({
+      amount: plan.amount,
+      currency: "INR",
+      receipt: `receipt_${req.userId}_${Date.now()}`,
+      notes: { userId: req.userId, planType },
+    });
+
+    res.json({
+      orderId: order.id,
+      amount: order.amount,
+      currency: order.currency,
+      keyId: process.env.RAZORPAY_KEY_ID,
+      planLabel: plan.label,
+    });
+  } catch (err) {
+    console.error("Order creation failed:", err);
+    res.status(500).json({ error: "Failed to create order" });
+  }
+});
+
+app.post("/api/verify-payment", authMiddleware, async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planType } = req.body;
+    const plan = PLANS[planType];
+    if (!plan) return res.status(400).json({ error: "Invalid plan type" });
+
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(body)
+      .digest("hex");
+
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({ error: "Payment verification failed" });
+    }
+
+    const expiresAt = new Date();
+    expiresAt.setMonth(expiresAt.getMonth() + plan.months);
+
+    await pool.query(
+      "UPDATE users SET plan = $1, plan_expires_at = $2 WHERE user_id = $3",
+      [planType === "student" ? "student_pending" : "regular", expiresAt, req.userId]
+    );
+
+    res.json({ ok: true, plan: planType === "student" ? "student_pending" : "regular", planExpiresAt: expiresAt });
+  } catch (err) {
+    console.error("Payment verification failed:", err);
+    res.status(500).json({ error: "Payment verification failed" });
   }
 });
 
