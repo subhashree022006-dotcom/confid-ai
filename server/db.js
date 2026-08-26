@@ -24,6 +24,8 @@ export async function initDb() {
       password_hash TEXT NOT NULL,
       plan TEXT DEFAULT 'free',
       plan_expires_at TIMESTAMP,
+      student_id_url TEXT,
+      student_id_status TEXT DEFAULT 'none',
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);

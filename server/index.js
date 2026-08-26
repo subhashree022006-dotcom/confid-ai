@@ -5,6 +5,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import Razorpay from "razorpay";
 import crypto from "crypto";
+import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
 import OpenAI from "openai";
 import { pool, initDb } from "./db.js";
 
@@ -12,6 +14,14 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
@@ -25,6 +35,7 @@ const razorpay = new Razorpay({
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const FREE_SESSION_LIMIT = 4;
+const ADMIN_USER_ID = "subhashree022006@gmail.com";
 
 const PLANS = {
   student: { amount: 29900, months: 6, label: "Student" },
@@ -42,6 +53,17 @@ function authMiddleware(req, res, next) {
   } catch (err) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
+}
+
+function adminMiddleware(req, res, next) {
+  if (req.userId !== ADMIN_USER_ID) {
+    return res.status(403).json({ error: "Admin access only" });
+  }
+  const adminPassword = req.headers["x-admin-password"];
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: "Invalid admin password" });
+  }
+  next();
 }
 
 app.post("/api/signup", async (req, res) => {
@@ -89,12 +111,12 @@ app.post("/api/login", async (req, res) => {
 
 app.get("/api/me", authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query("SELECT user_id, plan, plan_expires_at FROM users WHERE user_id = $1", [req.userId]);
+    const result = await pool.query("SELECT user_id, plan, plan_expires_at, student_id_status FROM users WHERE user_id = $1", [req.userId]);
     if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
     const user = result.rows[0];
 
     let plan = user.plan;
-    if (plan !== "free" && user.plan_expires_at && new Date(user.plan_expires_at) < new Date()) {
+    if ((plan === "regular" || plan === "student") && user.plan_expires_at && new Date(user.plan_expires_at) < new Date()) {
       await pool.query("UPDATE users SET plan = 'free', plan_expires_at = NULL WHERE user_id = $1", [req.userId]);
       plan = "free";
     }
@@ -102,13 +124,17 @@ app.get("/api/me", authMiddleware, async (req, res) => {
     const sessionCountResult = await pool.query("SELECT COUNT(*) FROM sessions WHERE user_id = $1", [req.userId]);
     const sessionsUsed = parseInt(sessionCountResult.rows[0].count, 10);
 
+    const isPaidActive = plan === "regular" || plan === "student";
+
     res.json({
       userId: user.user_id,
       plan,
       planExpiresAt: user.plan_expires_at,
+      studentIdStatus: user.student_id_status,
       sessionsUsed,
       freeSessionLimit: FREE_SESSION_LIMIT,
-      canPractice: plan !== "free" || sessionsUsed < FREE_SESSION_LIMIT,
+      canPractice: isPaidActive || sessionsUsed < FREE_SESSION_LIMIT,
+      isAdmin: req.userId === ADMIN_USER_ID,
     });
   } catch (err) {
     console.error("Fetch user failed:", err);
@@ -161,15 +187,86 @@ app.post("/api/verify-payment", authMiddleware, async (req, res) => {
     const expiresAt = new Date();
     expiresAt.setMonth(expiresAt.getMonth() + plan.months);
 
-    await pool.query(
-      "UPDATE users SET plan = $1, plan_expires_at = $2 WHERE user_id = $3",
-      [planType === "student" ? "student_pending" : "regular", expiresAt, req.userId]
-    );
-
-    res.json({ ok: true, plan: planType === "student" ? "student_pending" : "regular", planExpiresAt: expiresAt });
+    if (planType === "student") {
+      await pool.query(
+        "UPDATE users SET plan = 'free', plan_expires_at = $1, student_id_status = 'pending' WHERE user_id = $2",
+        [expiresAt, req.userId]
+      );
+      res.json({ ok: true, requiresIdUpload: true, planExpiresAt: expiresAt });
+    } else {
+      await pool.query(
+        "UPDATE users SET plan = 'regular', plan_expires_at = $1 WHERE user_id = $2",
+        [expiresAt, req.userId]
+      );
+      res.json({ ok: true, requiresIdUpload: false, plan: "regular", planExpiresAt: expiresAt });
+    }
   } catch (err) {
     console.error("Payment verification failed:", err);
     res.status(500).json({ error: "Payment verification failed" });
+  }
+});
+
+app.post("/api/upload-student-id", authMiddleware, upload.single("idImage"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "confidai_student_ids", resource_type: "image" },
+        (error, result) => (error ? reject(error) : resolve(result))
+      );
+      stream.end(req.file.buffer);
+    });
+
+    await pool.query(
+      "UPDATE users SET student_id_url = $1, student_id_status = 'pending' WHERE user_id = $2",
+      [uploadResult.secure_url, req.userId]
+    );
+
+    res.json({ ok: true, url: uploadResult.secure_url });
+  } catch (err) {
+    console.error("Student ID upload failed:", err);
+    res.status(500).json({ error: "Failed to upload ID" });
+  }
+});
+
+app.get("/api/admin/pending-students", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT user_id, student_id_url, student_id_status, plan_expires_at, created_at FROM users WHERE student_id_status = 'pending' ORDER BY created_at ASC"
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Fetch pending students failed:", err);
+    res.status(500).json({ error: "Failed to fetch pending students" });
+  }
+});
+
+app.post("/api/admin/approve-student", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    await pool.query(
+      "UPDATE users SET plan = 'student', student_id_status = 'approved' WHERE user_id = $1",
+      [userId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Approve student failed:", err);
+    res.status(500).json({ error: "Failed to approve student" });
+  }
+});
+
+app.post("/api/admin/reject-student", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    await pool.query(
+      "UPDATE users SET student_id_status = 'rejected' WHERE user_id = $1",
+      [userId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Reject student failed:", err);
+    res.status(500).json({ error: "Failed to reject student" });
   }
 });
 
