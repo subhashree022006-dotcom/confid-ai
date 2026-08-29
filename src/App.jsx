@@ -3,6 +3,8 @@ import PracticeModes from "./pages/PracticeModes.jsx";
 import Pricing from "./pages/Pricing.jsx";
 import TermsOfService from "./pages/TermsOfService.jsx";
 import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import ResetPassword from "./pages/ResetPassword.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import AdminPanel from "./pages/AdminPanel.jsx";
 import { Routes, Route } from "react-router-dom";
@@ -35,6 +37,8 @@ export default function App() {
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/terms" element={<TermsOfService />} />
       <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/interview" element={<ProtectedRoute><InterviewSetup /></ProtectedRoute>} />
       <Route path="/interview/session" element={<ProtectedRoute><InterviewSession /></ProtectedRoute>} />

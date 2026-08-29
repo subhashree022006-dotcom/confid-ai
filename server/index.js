@@ -3,10 +3,11 @@ import cors from "cors";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import Razorpay from "razorpay";
 import crypto from "crypto";
+import Razorpay from "razorpay";
 import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
+import { Resend } from "resend";
 import OpenAI from "openai";
 import { pool, initDb } from "./db.js";
 
@@ -23,6 +24,8 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
   baseURL: "https://api.groq.com/openai/v1",
@@ -36,6 +39,7 @@ const razorpay = new Razorpay({
 const JWT_SECRET = process.env.JWT_SECRET;
 const FREE_SESSION_LIMIT = 4;
 const ADMIN_USER_ID = "subhashree022006@gmail.com";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 const PLANS = {
   student: { amount: 29900, months: 6, label: "Student" },
@@ -106,6 +110,81 @@ app.post("/api/login", async (req, res) => {
   } catch (err) {
     console.error("Login failed:", err);
     res.status(500).json({ error: "Login failed" });
+  }
+});
+
+app.post("/api/forgot-password", async (req, res) => {
+  try {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: "Enter your user ID." });
+
+    const result = await pool.query("SELECT id FROM users WHERE user_id = $1", [userId]);
+    if (result.rows.length === 0) {
+      return res.json({ ok: true });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    await pool.query(
+      "UPDATE users SET reset_token = $1, reset_token_expires_at = $2 WHERE user_id = $3",
+      [resetToken, expiresAt, userId]
+    );
+
+    const resetLink = `${FRONTEND_URL}/reset-password?token=${resetToken}&userId=${encodeURIComponent(userId)}`;
+
+    await resend.emails.send({
+      from: "Confid.ai <onboarding@resend.dev>",
+      to: userId,
+      subject: "Reset your Confid.ai password",
+      html: `
+        <p>Hi,</p>
+        <p>We received a request to reset your Confid.ai password. Click the link below to set a new one. This link expires in 1 hour.</p>
+        <p><a href="${resetLink}">${resetLink}</a></p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
+      `,
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Forgot password failed:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+});
+
+app.post("/api/reset-password", async (req, res) => {
+  try {
+    const { userId, token, newPassword } = req.body;
+    if (!userId || !token || !newPassword || newPassword.length < 4) {
+      return res.status(400).json({ error: "Invalid request. Password must be at least 4 characters." });
+    }
+
+    const result = await pool.query(
+      "SELECT reset_token, reset_token_expires_at FROM users WHERE user_id = $1",
+      [userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: "Invalid or expired reset link." });
+    }
+    const user = result.rows[0];
+
+    if (!user.reset_token || user.reset_token !== token) {
+      return res.status(400).json({ error: "Invalid or expired reset link." });
+    }
+    if (!user.reset_token_expires_at || new Date(user.reset_token_expires_at) < new Date()) {
+      return res.status(400).json({ error: "This reset link has expired. Please request a new one." });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      "UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires_at = NULL WHERE user_id = $2",
+      [passwordHash, userId]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Reset password failed:", err);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
   }
 });
 

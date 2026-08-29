@@ -26,6 +26,8 @@ export async function initDb() {
       plan_expires_at TIMESTAMP,
       student_id_url TEXT,
       student_id_status TEXT DEFAULT 'none',
+      reset_token TEXT,
+      reset_token_expires_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);

@@ -35,7 +35,10 @@ export default function Login() {
               <input className="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400" value={userId} onChange={(e) => setUserId(e.target.value)} />
             </div>
             <div>
-              <label className="text-sm text-gray-300">Password</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-gray-300">Password</label>
+                <Link to="/forgot-password" className="text-xs text-cyan-300 hover:underline">Forgot password?</Link>
+              </div>
               <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             {error && <p className="text-sm text-rose-400">{error}</p>}
