@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import Navbar from "../components/Navbar.jsx";
 import PasswordInput from "../components/PasswordInput.jsx";
-
 export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
@@ -11,7 +10,6 @@ export default function Signup() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
   async function handleSubmit(e) {
     e.preventDefault();
     if (!userId.trim() || password.length < 4) {
@@ -25,7 +23,6 @@ export default function Signup() {
     if (!result.ok) { setError(result.error); return; }
     navigate("/dashboard");
   }
-
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
@@ -46,6 +43,12 @@ export default function Signup() {
             <button disabled={loading} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90 disabled:opacity-50">
               {loading ? "Creating account..." : "Create account"}
             </button>
+            <p className="text-xs text-gray-500 text-center">
+              By signing up, you agree to our{" "}
+              <Link to="/terms" className="text-cyan-300 hover:underline">Terms of Service</Link>
+              {" "}and{" "}
+              <Link to="/privacy" className="text-cyan-300 hover:underline">Privacy Policy</Link>.
+            </p>
           </form>
           <p className="text-sm text-gray-400 mt-5">Already have an account? <Link to="/login" className="text-cyan-300 font-medium">Log in</Link></p>
         </div>
