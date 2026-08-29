@@ -1,6 +1,8 @@
 ﻿import HowItWorks from "./pages/HowItWorks.jsx";
 import PracticeModes from "./pages/PracticeModes.jsx";
 import Pricing from "./pages/Pricing.jsx";
+import TermsOfService from "./pages/TermsOfService.jsx";
+import PrivacyPolicy from "./pages/PrivacyPolicy.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import AdminPanel from "./pages/AdminPanel.jsx";
 import { Routes, Route } from "react-router-dom";
@@ -31,6 +33,8 @@ export default function App() {
       <Route path="/how-it-works" element={<HowItWorks />} />
       <Route path="/practice-modes" element={<PracticeModes />} />
       <Route path="/pricing" element={<Pricing />} />
+      <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/interview" element={<ProtectedRoute><InterviewSetup /></ProtectedRoute>} />
       <Route path="/interview/session" element={<ProtectedRoute><InterviewSession /></ProtectedRoute>} />
