@@ -30,6 +30,26 @@ const PLANS = [
   },
 ];
 
+function loadRazorpayScript() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+    const existingScript = document.querySelector('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve(true));
+      existingScript.addEventListener("error", () => resolve(false));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
+
 export default function Pricing() {
   const navigate = useNavigate();
   const { user, refreshUser } = useAuth();
@@ -49,6 +69,13 @@ export default function Pricing() {
 
     setError("");
     setLoadingPlan(planKey);
+
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded || !window.Razorpay) {
+      setError("Could not load payment gateway. Please check your internet connection or disable any ad blocker, then try again.");
+      setLoadingPlan(null);
+      return;
+    }
 
     try {
       const token = localStorage.getItem("confidai_token");
