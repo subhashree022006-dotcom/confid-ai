@@ -3,6 +3,13 @@
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
+function stdDev(nums) {
+  if (nums.length < 2) return 0;
+  const avg = average(nums);
+  const variance = average(nums.map((n) => (n - avg) ** 2));
+  return Math.sqrt(variance);
+}
+
 export function computeEyeContactScore(samples) {
   const withFace = samples.filter((s) => s.faceDetected);
   if (!withFace.length) return 0;
@@ -11,25 +18,60 @@ export function computeEyeContactScore(samples) {
   return Math.round(Math.min(1, faceVisibleRatio * 0.5 + centerednessAvg * 0.5) * 100);
 }
 
-export function computeConfidenceScore(samples) {
-  const withFace = samples.filter((s) => s.faceDetected && s.expressions);
-  if (!withFace.length) return 0;
-  const positive = average(withFace.map((s) => (s.expressions.happy ?? 0) + (s.expressions.neutral ?? 0) * 0.6));
-  const negative = average(withFace.map((s) => (s.expressions.fearful ?? 0) + (s.expressions.sad ?? 0) + (s.expressions.disgusted ?? 0)));
-  const raw = Math.max(0, Math.min(1, positive - negative * 0.5));
-  return Math.round(raw * 100);
-}
-
 export function computeGestureScore(samples) {
-  const sizes = samples.filter((s) => s.faceDetected).map((s) => s.boxSize ?? 0);
-  if (sizes.length < 2) return 50;
-  const diffs = sizes.slice(1).map((v, i) => Math.abs(v - sizes[i]));
-  const movement = average(diffs) * 5000;
-  const score = 100 - Math.min(100, Math.abs(movement - 20) * 3);
+  const withFace = samples.filter((s) => s.faceDetected);
+  if (withFace.length < 3) return 50;
+
+  const sizes = withFace.map((s) => s.boxSize ?? 0);
+  const centerX = withFace.map((s) => s.centerX ?? 0.5);
+  const centerY = withFace.map((s) => s.centerY ?? 0.5);
+
+  const sizeVariability = stdDev(sizes) * 1000;
+  const positionVariability = (stdDev(centerX) + stdDev(centerY)) * 500;
+
+  const totalMovement = sizeVariability + positionVariability;
+
+  const idealMin = 8;
+  const idealMax = 35;
+
+  let score;
+  if (totalMovement < idealMin) {
+    score = 40 + (totalMovement / idealMin) * 30;
+  } else if (totalMovement <= idealMax) {
+    score = 100 - ((totalMovement - idealMin) / (idealMax - idealMin)) * 15;
+  } else {
+    score = Math.max(20, 85 - (totalMovement - idealMax) * 1.5);
+  }
+
   return Math.round(Math.max(20, Math.min(95, score)));
 }
 
-export function computeCommunicationScore(transcript) {
+export function buildBehavioralSummary(samples) {
+  const withFace = samples.filter((s) => s.faceDetected);
+  const faceVisiblePercent = samples.length ? Math.round((withFace.length / samples.length) * 100) : 0;
+  const centerednessAvg = withFace.length ? Math.round(average(withFace.map((s) => s.centeredness ?? 0)) * 100) : 0;
+
+  const positiveExpressionAvg = withFace.length
+    ? Math.round(
+        average(
+          withFace
+            .filter((s) => s.expressions)
+            .map((s) => ((s.expressions.happy ?? 0) + (s.expressions.neutral ?? 0) * 0.6) * 100)
+        )
+      )
+    : 0;
+
+  const gestureScore = computeGestureScore(samples);
+
+  return {
+    faceVisiblePercent,
+    centerednessAvg,
+    positiveExpressionAvg,
+    movementLevel: gestureScore,
+  };
+}
+
+export function computeCommunicationScoreFallback(transcript) {
   if (!transcript || !transcript.trim()) return 0;
   const words = transcript.trim().split(/\s+/);
   const wordCount = words.length;
@@ -44,9 +86,4 @@ export function computeCommunicationScore(transcript) {
 export function computeOverallScore(scores) {
   const values = Object.values(scores).filter((v) => typeof v === "number");
   return Math.round(average(values));
-}
-
-export function computeHireProbability({ confidence, eyeContact, communication, gesture }) {
-  const weighted = confidence * 0.3 + eyeContact * 0.2 + communication * 0.35 + gesture * 0.15;
-  return Math.round(Math.max(5, Math.min(95, weighted)));
 }

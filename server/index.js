@@ -368,6 +368,53 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+app.post("/api/analyze-session", async (req, res) => {
+  try {
+    const { transcript, behavioralSummary, mode, context } = req.body;
+
+    const prompt = `You are an expert communication coach evaluating a ${mode} practice session.
+
+Context: ${context || "N/A"}
+
+Transcript of what the person said:
+"""
+${transcript || "(no speech detected)"}
+"""
+
+Behavioral data from video analysis during the session:
+- Face visible ${behavioralSummary.faceVisiblePercent}% of the time
+- Average head centeredness: ${behavioralSummary.centerednessAvg}/100
+- Positive expression average: ${behavioralSummary.positiveExpressionAvg}/100
+- Head/body movement level: ${behavioralSummary.movementLevel}/100 (0=very still, 100=very active)
+
+Score this session from 0-100 on these dimensions, and respond ONLY with valid JSON, no other text:
+{
+  "confidence": <0-100, based on tone, word choice, hedging language, and behavioral signals>,
+  "communication": <0-100, based on clarity, structure, relevance to context, filler word usage>,
+  "reasoning": "<2-3 sentence explanation of the scores>",
+  "hireProbability": <0-100, ONLY if mode is interview, otherwise null. Be conservative and realistic - this is an estimate, not a guarantee>
+}`;
+
+    const response = await groq.chat.completions.create({
+      model: "openai/gpt-oss-120b",
+      max_tokens: 400,
+      messages: [
+        { role: "system", content: "You are a precise, honest evaluator. Respond only with valid JSON matching the exact schema requested. Do not wrap in markdown code blocks." },
+        { role: "user", content: prompt },
+      ],
+    });
+
+    const raw = response.choices[0].message.content.trim();
+    const cleaned = raw.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleaned);
+
+    res.json(parsed);
+  } catch (err) {
+    console.error("Session analysis failed:", err);
+    res.status(500).json({ error: "Analysis failed", confidence: null, communication: null, reasoning: "AI analysis unavailable", hireProbability: null });
+  }
+});
+
 app.post("/api/sessions", authMiddleware, async (req, res) => {
   try {
     const { mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability } = req.body;
