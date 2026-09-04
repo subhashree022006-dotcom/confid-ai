@@ -38,7 +38,6 @@ const razorpay = new Razorpay({
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const FREE_SESSION_LIMIT = 4;
-const ADMIN_USER_ID = "subhashree022006@gmail.com";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 const PLANS = {
@@ -59,15 +58,21 @@ function authMiddleware(req, res, next) {
   }
 }
 
-function adminMiddleware(req, res, next) {
-  if (req.userId !== ADMIN_USER_ID) {
-    return res.status(403).json({ error: "Admin access only" });
+async function adminMiddleware(req, res, next) {
+  try {
+    const result = await pool.query("SELECT is_admin FROM users WHERE user_id = $1", [req.userId]);
+    if (result.rows.length === 0 || !result.rows[0].is_admin) {
+      return res.status(403).json({ error: "Admin access only" });
+    }
+    const adminPassword = req.headers["x-admin-password"];
+    if (adminPassword !== process.env.ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Invalid admin password" });
+    }
+    next();
+  } catch (err) {
+    console.error("Admin check failed:", err);
+    res.status(500).json({ error: "Admin check failed" });
   }
-  const adminPassword = req.headers["x-admin-password"];
-  if (adminPassword !== process.env.ADMIN_PASSWORD) {
-    return res.status(403).json({ error: "Invalid admin password" });
-  }
-  next();
 }
 
 app.post("/api/signup", async (req, res) => {
@@ -190,7 +195,7 @@ app.post("/api/reset-password", async (req, res) => {
 
 app.get("/api/me", authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query("SELECT user_id, plan, plan_expires_at, student_id_status FROM users WHERE user_id = $1", [req.userId]);
+    const result = await pool.query("SELECT user_id, plan, plan_expires_at, student_id_status, is_admin FROM users WHERE user_id = $1", [req.userId]);
     if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
     const user = result.rows[0];
 
@@ -213,7 +218,7 @@ app.get("/api/me", authMiddleware, async (req, res) => {
       sessionsUsed,
       freeSessionLimit: FREE_SESSION_LIMIT,
       canPractice: isPaidActive || sessionsUsed < FREE_SESSION_LIMIT,
-      isAdmin: req.userId === ADMIN_USER_ID,
+      isAdmin: user.is_admin,
     });
   } catch (err) {
     console.error("Fetch user failed:", err);
@@ -372,34 +377,58 @@ app.post("/api/analyze-session", async (req, res) => {
   try {
     const { transcript, behavioralSummary, mode, context } = req.body;
 
-    const prompt = `You are an expert communication coach evaluating a ${mode} practice session.
+    const wordCount = (transcript || "").trim().split(/\s+/).filter(Boolean).length;
+
+    const prompt = `You are a demanding, professional communication evaluator for a ${mode} practice session. You have high standards, similar to a strict university professor or a senior hiring manager. You do NOT give credit for effort alone - only for what was actually demonstrated.
 
 Context: ${context || "N/A"}
+Transcript word count: ${wordCount}
 
 Transcript of what the person said:
 """
-${transcript || "(no speech detected)"}
+${transcript || "(no speech detected - nothing to evaluate)"}
 """
 
-Behavioral data from video analysis during the session:
+Behavioral data from video analysis:
 - Face visible ${behavioralSummary.faceVisiblePercent}% of the time
-- Average head centeredness: ${behavioralSummary.centerednessAvg}/100
+- Head centeredness: ${behavioralSummary.centerednessAvg}/100
 - Positive expression average: ${behavioralSummary.positiveExpressionAvg}/100
-- Head/body movement level: ${behavioralSummary.movementLevel}/100 (0=very still, 100=very active)
+- Movement level: ${behavioralSummary.movementLevel}/100
 
-Score this session from 0-100 on these dimensions, and respond ONLY with valid JSON, no other text:
+Score CONFIDENCE (0-100) using this rubric:
+- 0-20: No content, or extremely hesitant/uncertain language throughout ("I don't know", "maybe", "I guess" repeated)
+- 21-40: Frequent hedging, uncertainty, very short or incomplete responses
+- 41-60: Some hedging but generally states points; average, unremarkable delivery
+- 61-80: Clear, assertive statements with minimal hedging; sustained through the full response
+- 81-100: Consistently assertive, decisive language throughout a complete, substantial response with no meaningful hedging
+
+Score COMMUNICATION (0-100) using this rubric:
+- 0-20: No coherent content, or response doesn't address the context/question at all
+- 21-40: Fragmented, very short, or largely irrelevant to the context; major gaps
+- 41-60: Addresses the topic but lacks structure, depth, or specific detail; generic statements
+- 61-80: Clear structure (beginning/middle/end or logical flow), relevant, reasonably detailed, minor filler words
+- 81-100: Excellent structure, specific concrete examples/detail, fully addresses the context, virtually no filler words, appropriate length for the context
+
+CRITICAL RULES:
+- A response under 50 words CANNOT score above 40 on either dimension, no matter how well-phrased.
+- Generic statements without specific examples or detail CANNOT score above 60.
+- If the transcript doesn't actually address the given context, cap both scores at 30.
+- Do not round up to be encouraging. If performance is average, score it in the 41-60 range, not higher.
+- Most real, unpracticed people score in the 40-65 range. Scores above 75 should be rare and reserved for genuinely strong performances.
+
+Respond ONLY with valid JSON, no other text:
 {
-  "confidence": <0-100, based on tone, word choice, hedging language, and behavioral signals>,
-  "communication": <0-100, based on clarity, structure, relevance to context, filler word usage>,
-  "reasoning": "<2-3 sentence explanation of the scores>",
-  "hireProbability": <0-100, ONLY if mode is interview, otherwise null. Be conservative and realistic - this is an estimate, not a guarantee>
+  "confidence": <0-100>,
+  "communication": <0-100>,
+  "reasoning": "<2-3 sentences citing SPECIFIC evidence from the transcript - quote or reference what was actually said or missing, not generic praise>",
+  "hireProbability": <0-100, ONLY if mode is interview, otherwise null. Be realistic - most practice attempts should NOT suggest high hire probability unless truly excellent>
 }`;
 
     const response = await groq.chat.completions.create({
       model: "openai/gpt-oss-120b",
-      max_tokens: 400,
+      max_tokens: 450,
       messages: [
-        { role: "system", content: "You are a precise, honest evaluator. Respond only with valid JSON matching the exact schema requested. Do not wrap in markdown code blocks." },
+        { role: "system", content: "You are a strict, evidence-based evaluator. You never inflate scores to be encouraging. You cite specific evidence from the transcript in your reasoning. Respond only with valid JSON, no markdown formatting." },
         { role: "user", content: prompt },
       ],
     });
@@ -407,6 +436,14 @@ Score this session from 0-100 on these dimensions, and respond ONLY with valid J
     const raw = response.choices[0].message.content.trim();
     const cleaned = raw.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned);
+
+    if (wordCount < 50) {
+      parsed.confidence = parsed.confidence !== null ? Math.min(parsed.confidence, 40) : null;
+      parsed.communication = Math.min(parsed.communication, 40);
+      if (parsed.hireProbability !== null && parsed.hireProbability !== undefined) {
+        parsed.hireProbability = Math.min(parsed.hireProbability, 30);
+      }
+    }
 
     res.json(parsed);
   } catch (err) {
