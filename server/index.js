@@ -354,6 +354,46 @@ app.post("/api/admin/reject-student", authMiddleware, adminMiddleware, async (re
   }
 });
 
+app.post("/api/admin/cancel-plan", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { userId, reason } = req.body;
+    if (!userId) return res.status(400).json({ error: "userId is required" });
+
+    const userResult = await pool.query("SELECT plan FROM users WHERE user_id = $1", [userId]);
+    if (userResult.rows.length === 0) return res.status(404).json({ error: "User not found" });
+    const previousPlan = userResult.rows[0].plan;
+
+    await pool.query(
+      "UPDATE users SET plan = 'free', plan_expires_at = NULL, student_id_status = 'none' WHERE user_id = $1",
+      [userId]
+    );
+
+    await pool.query(
+      "INSERT INTO cancellation_log (user_id, previous_plan, cancelled_by, reason) VALUES ($1, $2, $3, $4)",
+      [userId, previousPlan, req.userId, reason || null]
+    );
+
+    res.json({ ok: true, previousPlan });
+  } catch (err) {
+    console.error("Cancel plan failed:", err);
+    res.status(500).json({ error: "Failed to cancel plan" });
+  }
+});
+
+app.get("/api/admin/user/:userId", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT user_id, plan, plan_expires_at, student_id_status, created_at FROM users WHERE user_id = $1",
+      [req.params.userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("User lookup failed:", err);
+    res.status(500).json({ error: "Failed to look up user" });
+  }
+});
+
 app.post("/api/chat", async (req, res) => {
   try {
     const { messages, system } = req.body;
