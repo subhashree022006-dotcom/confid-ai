@@ -394,6 +394,55 @@ app.get("/api/admin/user/:userId", authMiddleware, adminMiddleware, async (req, 
   }
 });
 
+app.get("/api/admin/stats", authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const totalUsersResult = await pool.query("SELECT COUNT(*) FROM users");
+    const totalUsers = parseInt(totalUsersResult.rows[0].count, 10);
+
+    const usersByPlanResult = await pool.query("SELECT plan, COUNT(*) as count FROM users GROUP BY plan");
+    const usersByPlan = usersByPlanResult.rows.reduce((acc, row) => {
+      acc[row.plan] = parseInt(row.count, 10);
+      return acc;
+    }, {});
+
+    const totalSessionsResult = await pool.query("SELECT COUNT(*) FROM sessions");
+    const totalSessions = parseInt(totalSessionsResult.rows[0].count, 10);
+
+    const sessionsByModeResult = await pool.query("SELECT mode, COUNT(*) as count FROM sessions GROUP BY mode");
+    const sessionsByMode = sessionsByModeResult.rows.reduce((acc, row) => {
+      acc[row.mode] = parseInt(row.count, 10);
+      return acc;
+    }, {});
+
+    const avgScoreResult = await pool.query("SELECT AVG(overall_score) as avg FROM sessions WHERE overall_score IS NOT NULL");
+    const avgScore = avgScoreResult.rows[0].avg ? Math.round(parseFloat(avgScoreResult.rows[0].avg)) : null;
+
+    const signupsLast7DaysResult = await pool.query(
+      "SELECT DATE(created_at) as day, COUNT(*) as count FROM users WHERE created_at >= NOW() - INTERVAL '7 days' GROUP BY DATE(created_at) ORDER BY day ASC"
+    );
+    const signupsLast7Days = signupsLast7DaysResult.rows.map((row) => ({
+      day: row.day,
+      count: parseInt(row.count, 10),
+    }));
+
+    const pendingStudentsResult = await pool.query("SELECT COUNT(*) FROM users WHERE student_id_status = 'pending'");
+    const pendingStudents = parseInt(pendingStudentsResult.rows[0].count, 10);
+
+    res.json({
+      totalUsers,
+      usersByPlan,
+      totalSessions,
+      sessionsByMode,
+      avgScore,
+      signupsLast7Days,
+      pendingStudents,
+    });
+  } catch (err) {
+    console.error("Stats fetch failed:", err);
+    res.status(500).json({ error: "Failed to fetch stats" });
+  }
+});
+
 app.post("/api/chat", async (req, res) => {
   try {
     const { messages, system } = req.body;
