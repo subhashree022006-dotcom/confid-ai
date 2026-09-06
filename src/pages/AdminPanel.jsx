@@ -4,11 +4,19 @@ import { useAuth } from "../context/AuthContext.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
+const MODE_LABELS = {
+  interview: "Interview",
+  presentation: "Presentation",
+  stagespeech: "Stage Speech",
+  gd: "Group Discussion",
+};
+
 export default function AdminPanel() {
   const { user } = useAuth();
   const [adminPassword, setAdminPassword] = useState("");
   const [authorized, setAuthorized] = useState(false);
   const [pending, setPending] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState(null);
@@ -27,19 +35,23 @@ export default function AdminPanel() {
     setLoading(true);
     try {
       const token = localStorage.getItem("confidai_token");
-      const res = await fetch(`${API_BASE}/api/admin/pending-students`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "x-admin-password": adminPassword,
-        },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Access denied.");
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "x-admin-password": adminPassword,
+      };
+      const [pendingRes, statsRes] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/pending-students`, { headers }),
+        fetch(`${API_BASE}/api/admin/stats`, { headers }),
+      ]);
+      const pendingData = await pendingRes.json();
+      if (!pendingRes.ok) {
+        setError(pendingData.error || "Access denied.");
         setLoading(false);
         return;
       }
-      setPending(data);
+      const statsData = await statsRes.json();
+      setPending(pendingData);
+      setStats(statsRes.ok ? statsData : null);
       setAuthorized(true);
       setLoading(false);
     } catch (err) {
@@ -51,13 +63,16 @@ export default function AdminPanel() {
 
   async function refreshPending() {
     const token = localStorage.getItem("confidai_token");
-    const res = await fetch(`${API_BASE}/api/admin/pending-students`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "x-admin-password": adminPassword,
-      },
-    });
-    if (res.ok) setPending(await res.json());
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      "x-admin-password": adminPassword,
+    };
+    const [pendingRes, statsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/admin/pending-students`, { headers }),
+      fetch(`${API_BASE}/api/admin/stats`, { headers }),
+    ]);
+    if (pendingRes.ok) setPending(await pendingRes.json());
+    if (statsRes.ok) setStats(await statsRes.json());
   }
 
   async function handleApprove(userId) {
@@ -200,8 +215,62 @@ export default function AdminPanel() {
     <div className="min-h-screen bg-slate-950 text-white">
       <Navbar />
       <main className="max-w-4xl mx-auto px-6 py-12">
+        {stats && (
+          <div className="mb-12">
+            <h1 className="text-2xl font-bold mb-6">Overview</h1>
+            <div className="grid sm:grid-cols-3 gap-4 mb-6">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                <p className="text-xs text-gray-500 mb-1">Total users</p>
+                <p className="text-3xl font-bold text-cyan-300">{stats.totalUsers}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                <p className="text-xs text-gray-500 mb-1">Total sessions</p>
+                <p className="text-3xl font-bold text-cyan-300">{stats.totalSessions}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                <p className="text-xs text-gray-500 mb-1">Average score</p>
+                <p className="text-3xl font-bold text-cyan-300">{stats.avgScore ?? "-"}</p>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                <p className="text-xs text-gray-500 mb-3">Users by plan</p>
+                <div className="space-y-1.5">
+                  {Object.entries(stats.usersByPlan).map(([plan, count]) => (
+                    <div key={plan} className="flex justify-between text-sm">
+                      <span className="text-gray-300 capitalize">{plan}</span>
+                      <span className="text-white font-medium">{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                <p className="text-xs text-gray-500 mb-3">Sessions by mode</p>
+                <div className="space-y-1.5">
+                  {Object.entries(stats.sessionsByMode).map(([mode, count]) => (
+                    <div key={mode} className="flex justify-between text-sm">
+                      <span className="text-gray-300">{MODE_LABELS[mode] || mode}</span>
+                      <span className="text-white font-medium">{count}</span>
+                    </div>
+                  ))}
+                  {Object.keys(stats.sessionsByMode).length === 0 && (
+                    <p className="text-sm text-gray-500">No sessions yet.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {stats.pendingStudents > 0 && (
+              <div className="mt-4 rounded-2xl border border-yellow-400/30 bg-yellow-500/5 p-4 text-sm text-yellow-300">
+                {stats.pendingStudents} student verification{stats.pendingStudents === 1 ? "" : "s"} awaiting review below.
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mb-12">
-          <h1 className="text-2xl font-bold mb-1">Look up user &amp; manage plan</h1>
+          <h2 className="text-2xl font-bold mb-1">Look up user &amp; manage plan</h2>
           <p className="text-gray-400 mb-6">Search a user to view or cancel their subscription.</p>
 
           <form onSubmit={handleLookup} className="flex gap-3 mb-4">
