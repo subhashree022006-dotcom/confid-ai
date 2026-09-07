@@ -41,8 +41,8 @@ const FREE_SESSION_LIMIT = 4;
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
 const PLANS = {
-  student: { amount: 29900, months: 6, label: "Student" },
-  regular: { amount: 79900, months: 6, label: "Regular" },
+  student: { amount: 19900, months: 6, label: "Student" },
+  regular: { amount: 39900, months: 6, label: "Regular" },
 };
 
 function authMiddleware(req, res, next) {
@@ -577,6 +577,18 @@ app.get("/api/sessions/:userId", authMiddleware, async (req, res) => {
   } catch (err) {
     console.error("Session fetch failed:", err);
     res.status(500).json({ error: "Failed to fetch sessions" });
+  }
+});
+
+app.delete("/api/account", authMiddleware, async (req, res) => {
+  try {
+    await pool.query("DELETE FROM sessions WHERE user_id = $1", [req.userId]);
+    await pool.query("DELETE FROM cancellation_log WHERE user_id = $1", [req.userId]);
+    await pool.query("DELETE FROM users WHERE user_id = $1", [req.userId]);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Account deletion failed:", err);
+    res.status(500).json({ error: "Failed to delete account" });
   }
 });
 
