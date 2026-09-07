@@ -87,3 +87,32 @@ export function computeOverallScore(scores) {
   const values = Object.values(scores).filter((v) => typeof v === "number");
   return Math.round(average(values));
 }
+
+export function detectFillerWords(transcript) {
+  if (!transcript || !transcript.trim()) {
+    return { totalCount: 0, breakdown: {}, totalWords: 0 };
+  }
+
+  const fillerWordsList = ["um", "uh", "like", "actually", "basically", "you know", "sort of", "kind of"];
+  const words = transcript.toLowerCase().split(/\s+/);
+  const breakdown = {};
+  let totalCount = 0;
+
+  fillerWordsList.forEach((filler) => {
+    const fillerParts = filler.split(" ");
+    let count = 0;
+    if (fillerParts.length === 1) {
+      count = words.filter((w) => w.replace(/[^a-z]/g, "") === filler).length;
+    } else {
+      const text = words.join(" ");
+      const regex = new RegExp(filler, "g");
+      count = (text.match(regex) || []).length;
+    }
+    if (count > 0) {
+      breakdown[filler] = count;
+      totalCount += count;
+    }
+  });
+
+  return { totalCount, breakdown, totalWords: words.length };
+}

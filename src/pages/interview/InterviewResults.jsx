@@ -10,6 +10,7 @@ import {
   computeCommunicationScoreFallback,
   computeOverallScore,
   buildBehavioralSummary,
+  detectFillerWords,
 } from "../../utils/analysis.js";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
@@ -31,6 +32,7 @@ export default function InterviewResults() {
   const eyeContact = computeEyeContactScore(samples);
   const gesture = computeGestureScore(samples);
   const behavioralSummary = buildBehavioralSummary(samples);
+  const fillerWords = detectFillerWords(transcript);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,6 +131,20 @@ export default function InterviewResults() {
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
             <p className="text-sm text-gray-400 mb-2">Coach feedback</p>
             <p className="text-gray-200">{aiResult.reasoning}</p>
+          </div>
+        )}
+
+        {fillerWords.totalCount > 0 && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+            <p className="text-sm text-gray-400 mb-2">Filler words detected</p>
+            <p className="text-2xl font-semibold text-yellow-400 mb-3">{fillerWords.totalCount} total</p>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(fillerWords.breakdown).map(([word, count]) => (
+                <span key={word} className="text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-gray-300">
+                  "{word}" x {count}
+                </span>
+              ))}
+            </div>
           </div>
         )}
 
