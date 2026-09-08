@@ -5,6 +5,8 @@ import Navbar from "../components/Navbar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fetchSessionHistory } from "../utils/sessionApi.js";
 
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
+
 const MODES = [
   { title: "Interview", key: "interview", desc: "Mock HR interview scored on confidence, gestures, eye contact, communication, and hire probability.", path: "/interview", color: "from-blue-500/20 to-blue-500/0", barColor: "#3b82f6" },
   { title: "Presentation", key: "presentation", desc: "Upload your slides, present to the camera, then face a short viva on your topic.", path: "/presentation", color: "from-cyan-500/20 to-cyan-500/0", barColor: "#22d3ee" },
@@ -20,11 +22,14 @@ const MODE_LABELS = {
 };
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [selectedMode, setSelectedMode] = useState("interview");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   useEffect(() => {
     if (!user) return;
@@ -62,11 +67,29 @@ export default function Dashboard() {
     });
   }, [history]);
 
-  const isFree = user?.plan === "free";
-  const sessionsUsed = user?.sessionsUsed ?? 0;
-  const freeLimit = user?.freeSessionLimit ?? 4;
-  const sessionsLeft = Math.max(freeLimit - sessionsUsed, 0);
-  const canPractice = user?.canPractice ?? true;
+  async function handleDeleteAccount() {
+    setDeleteLoading(true);
+    setDeleteError("");
+    try {
+      const token = localStorage.getItem("confidai_token");
+      const res = await fetch(`${API_BASE}/api/account`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setDeleteError(data.error || "Failed to delete account.");
+        setDeleteLoading(false);
+        return;
+      }
+      logout();
+      navigate("/");
+    } catch (err) {
+      console.error(err);
+      setDeleteError("Could not reach the server.");
+      setDeleteLoading(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -74,39 +97,14 @@ export default function Dashboard() {
       <main className="max-w-6xl mx-auto px-6 py-12">
         <p className="text-cyan-400 text-sm font-medium mb-2">Welcome back, {user?.userId}</p>
         <h1 className="text-3xl font-bold mb-1">What are you practicing today?</h1>
-        <p className="text-gray-400 mb-6">Choose a mode to begin a trial session.</p>
-
-        {isFree && (
-          <div className={`rounded-2xl border p-5 mb-10 flex items-center justify-between flex-wrap gap-4 ${
-            canPractice ? "border-cyan-400/30 bg-cyan-500/5" : "border-rose-400/30 bg-rose-500/5"
-          }`}>
-            <div>
-              <p className="font-medium">
-                {canPractice
-                  ? `${sessionsLeft} free session${sessionsLeft === 1 ? "" : "s"} remaining`
-                  : "You've used all your free sessions"}
-              </p>
-              <p className="text-sm text-gray-400">
-                {canPractice
-                  ? "Upgrade anytime to unlock unlimited practice across all modes."
-                  : "Upgrade to keep practicing across all 4 modes."}
-              </p>
-            </div>
-            <button
-              onClick={() => navigate("/pricing")}
-              className="px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90 whitespace-nowrap"
-            >
-              View plans
-            </button>
-          </div>
-        )}
+        <p className="text-gray-400 mb-10">Choose a mode to begin a trial session.</p>
 
         <div className="grid sm:grid-cols-2 gap-6 mb-12">
           {MODES.map((m) => (
             <button
               key={m.title}
-              onClick={() => canPractice ? navigate(m.path) : navigate("/pricing")}
-              className={`text-left rounded-2xl border border-white/10 bg-gradient-to-br ${m.color} p-7 hover:border-cyan-400/40 transition ${!canPractice ? "opacity-60" : ""}`}
+              onClick={() => navigate(m.path)}
+              className={`text-left rounded-2xl border border-white/10 bg-gradient-to-br ${m.color} p-7 hover:border-cyan-400/40 transition`}
             >
               <h3 className="text-xl font-semibold mb-2">{m.title}</h3>
               <p className="text-gray-400 text-sm">{m.desc}</p>
@@ -213,7 +211,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div className="border-t border-white/10 pt-10">
+        <div className="border-t border-white/10 pt-10 mb-12">
           <h2 className="text-xl font-semibold mb-6">Recent sessions</h2>
           {loadingHistory ? (
             <p className="text-gray-500 text-sm">Loading your session history...</p>
@@ -231,6 +229,41 @@ export default function Dashboard() {
                   <p className="text-2xl font-bold text-cyan-300">{s.overall_score}</p>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-rose-500/20 pt-10">
+          <h2 className="text-xl font-semibold mb-2 text-rose-400">Danger zone</h2>
+          <p className="text-gray-500 text-sm mb-4">Permanently delete your account and all session history. This cannot be undone.</p>
+
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-5 py-2.5 rounded-lg border border-rose-500/40 text-rose-400 hover:bg-rose-500/10 font-semibold text-sm"
+            >
+              Delete my account and data
+            </button>
+          ) : (
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-5 max-w-md">
+              <p className="text-sm text-gray-200 mb-4">Are you sure? This will permanently delete your account, all session history, and cannot be undone.</p>
+              {deleteError && <p className="text-sm text-rose-400 mb-3">{deleteError}</p>}
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleteLoading}
+                  className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-400 disabled:opacity-50 text-white font-semibold text-sm"
+                >
+                  {deleteLoading ? "Deleting..." : "Yes, delete everything"}
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleteLoading}
+                  className="px-4 py-2 rounded-lg border border-white/20 text-gray-300 hover:bg-white/5 font-semibold text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>
