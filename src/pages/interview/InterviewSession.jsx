@@ -23,9 +23,6 @@ export default function InterviewSession() {
   const [aiError, setAiError] = useState(false);
   const [elapsedLabel, setElapsedLabel] = useState("30:00");
 
-  // messagesRef is the single source of truth for conversation history used
-  // in async logic, avoiding stale-closure bugs where a callback fires with
-  // an outdated snapshot of React state. setMessages is only for rendering.
   const messagesRef = useRef([]);
   const samplesRef = useRef([]);
   const recognizerRef = useRef(null);
@@ -34,12 +31,19 @@ export default function InterviewSession() {
   const startTimeRef = useRef(Date.now());
   const durationTimerRef = useRef(null);
   const finishedRef = useRef(false);
-  const busyRef = useRef(false); // prevents double-submits
+  const busyRef = useRef(false);
   const systemPrompt = useRef(buildInterviewerSystemPrompt(form || {}));
 
-  // --- recording refs ---
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+  // Wall-clock time the recording actually started — used to compute each
+  // message's timestamp relative to the video, for the Step 8 jump-to-moment feature.
+  const recordingStartTimeRef = useRef(null);
+
+  function getElapsedSeconds() {
+    if (!recordingStartTimeRef.current) return 0;
+    return (Date.now() - recordingStartTimeRef.current) / 1000;
+  }
 
   function updateMessages(next) {
     messagesRef.current = next;
@@ -110,7 +114,7 @@ export default function InterviewSession() {
         systemPrompt.current
       );
       if (finishedRef.current) return;
-      const newMessages = [...history, { role: "assistant", content: reply }];
+      const newMessages = [...history, { role: "assistant", content: reply, timestamp: getElapsedSeconds() }];
       updateMessages(newMessages);
       setQuestionCount((c) => c + 1);
       if (form.mode === "voice") {
@@ -128,7 +132,7 @@ export default function InterviewSession() {
 
   function handleAnswer(userAnswer) {
     if (finishedRef.current || busyRef.current) return;
-    const newMessages = [...messagesRef.current, { role: "user", content: userAnswer }];
+    const newMessages = [...messagesRef.current, { role: "user", content: userAnswer, timestamp: getElapsedSeconds() }];
     updateMessages(newMessages);
     setTextAnswer("");
     captionRef.current = "";
@@ -147,9 +151,8 @@ export default function InterviewSession() {
     askNext();
   }
 
-  // --- recording: called by CameraFeed once the camera/mic stream is ready ---
   function handleStreamReady(stream) {
-    if (mediaRecorderRef.current) return; // already recording, don't restart
+    if (mediaRecorderRef.current) return;
     try {
       const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus"
@@ -159,14 +162,14 @@ export default function InterviewSession() {
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
-      recorder.start(1000); // collect in 1s chunks
+      recorder.start(1000);
       mediaRecorderRef.current = recorder;
+      recordingStartTimeRef.current = Date.now();
     } catch (e) {
       console.error("Could not start recording:", e);
     }
   }
 
-  // Stops the recorder and resolves with the final video Blob (or null if none)
   function stopRecordingAndGetBlob() {
     return new Promise((resolve) => {
       const recorder = mediaRecorderRef.current;
@@ -194,7 +197,13 @@ export default function InterviewSession() {
     setFinished(true);
     const fullTranscript = messagesRef.current.filter((m) => m.role === "user").map((m) => m.content).join(" ");
     navigate("/interview/results", {
-      state: { samples: samplesRef.current, transcript: fullTranscript, form, videoBlob },
+      state: {
+        samples: samplesRef.current,
+        transcript: fullTranscript,
+        messages: messagesRef.current, // full Q&A with timestamps, for Step 8 jump-to-moment
+        form,
+        videoBlob,
+      },
     });
   }
 

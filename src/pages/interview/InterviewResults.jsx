@@ -14,12 +14,20 @@ import {
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
+function formatTime(seconds) {
+  const s = Math.max(0, Math.floor(seconds || 0));
+  const mins = Math.floor(s / 60);
+  const secs = s % 60;
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 export default function InterviewResults() {
   const { state } = useLocation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const savedRef = useRef(false);
   const videoUploadRef = useRef(false);
+  const videoRef = useRef(null);
   const [analyzing, setAnalyzing] = useState(true);
   const [aiResult, setAiResult] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
@@ -30,7 +38,7 @@ export default function InterviewResults() {
     return null;
   }
 
-  const { samples, transcript, form, videoBlob } = state;
+  const { samples, transcript, messages, form, videoBlob } = state;
   const eyeContact = computeEyeContactScore(samples);
   const gesture = computeGestureScore(samples);
   const behavioralSummary = buildBehavioralSummary(samples);
@@ -74,7 +82,6 @@ export default function InterviewResults() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Upload the recorded video once, via our backend (Cloudinary credentials stay server-side).
   useEffect(() => {
     if (videoUploadRef.current || !videoBlob) return;
     videoUploadRef.current = true;
@@ -115,6 +122,12 @@ export default function InterviewResults() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analyzing, videoUploading]);
 
+  function jumpToMoment(timestamp) {
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = timestamp;
+    videoRef.current.play();
+  }
+
   if (analyzing) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center">
@@ -138,6 +151,7 @@ export default function InterviewResults() {
             <p className="text-sm text-gray-400 mb-2">Session recording</p>
             {videoUrl ? (
               <video
+                ref={videoRef}
                 src={videoUrl}
                 controls
                 className="w-full rounded-lg bg-black aspect-video"
@@ -147,6 +161,32 @@ export default function InterviewResults() {
                 {videoUploading ? "Uploading recording..." : "Recording unavailable."}
               </div>
             )}
+          </div>
+        )}
+
+        {videoUrl && messages && messages.length > 0 && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 mb-6">
+            <p className="text-sm text-gray-400 mb-3">Transcript</p>
+            <div className="space-y-3 max-h-80 overflow-y-auto">
+              {messages.map((m, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <button
+                    onClick={() => jumpToMoment(m.timestamp)}
+                    className="shrink-0 text-xs font-mono px-2 py-1 rounded bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20"
+                  >
+                    ▶ {formatTime(m.timestamp)}
+                  </button>
+                  <div>
+                    <span className="text-xs font-semibold uppercase mr-2 text-gray-500">
+                      {m.role === "assistant" ? "HR" : "You"}
+                    </span>
+                    <span className={m.role === "assistant" ? "text-gray-200" : "text-cyan-300"}>
+                      {m.content}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
