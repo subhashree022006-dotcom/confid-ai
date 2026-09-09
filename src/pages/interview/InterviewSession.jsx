@@ -37,6 +37,10 @@ export default function InterviewSession() {
   const busyRef = useRef(false); // prevents double-submits
   const systemPrompt = useRef(buildInterviewerSystemPrompt(form || {}));
 
+  // --- recording refs ---
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+
   function updateMessages(next) {
     messagesRef.current = next;
     setMessages(next);
@@ -143,15 +147,55 @@ export default function InterviewSession() {
     askNext();
   }
 
-  function endInterview() {
+  // --- recording: called by CameraFeed once the camera/mic stream is ready ---
+  function handleStreamReady(stream) {
+    if (mediaRecorderRef.current) return; // already recording, don't restart
+    try {
+      const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : "video/webm";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.start(1000); // collect in 1s chunks
+      mediaRecorderRef.current = recorder;
+    } catch (e) {
+      console.error("Could not start recording:", e);
+    }
+  }
+
+  // Stops the recorder and resolves with the final video Blob (or null if none)
+  function stopRecordingAndGetBlob() {
+    return new Promise((resolve) => {
+      const recorder = mediaRecorderRef.current;
+      if (!recorder || recorder.state === "inactive") {
+        resolve(null);
+        return;
+      }
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: "video/webm" });
+        resolve(blob);
+      };
+      recorder.stop();
+    });
+  }
+
+  async function endInterview() {
     if (finishedRef.current) return;
     finishedRef.current = true;
     clearInterval(durationTimerRef.current);
     clearTimeout(silenceTimerRef.current);
     recognizerRef.current?.stop();
+
+    const videoBlob = await stopRecordingAndGetBlob();
+
     setFinished(true);
     const fullTranscript = messagesRef.current.filter((m) => m.role === "user").map((m) => m.content).join(" ");
-    navigate("/interview/results", { state: { samples: samplesRef.current, transcript: fullTranscript, form } });
+    navigate("/interview/results", {
+      state: { samples: samplesRef.current, transcript: fullTranscript, form, videoBlob },
+    });
   }
 
   return (
@@ -159,7 +203,11 @@ export default function InterviewSession() {
       <Navbar />
       <main className="max-w-4xl mx-auto px-6 py-8 grid md:grid-cols-2 gap-6">
         <div>
-          <CameraFeed active={!finished} onSample={(s) => samplesRef.current.push(s)} />
+          <CameraFeed
+            active={!finished}
+            onSample={(s) => samplesRef.current.push(s)}
+            onStreamReady={handleStreamReady}
+          />
           <div className="flex items-center justify-between mt-2">
             <p className="text-xs text-gray-500">Question {questionCount} &middot; {elapsedLabel} left</p>
             {form?.mode === "voice" && <AudioLevelMeter active={!finished} />}

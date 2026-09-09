@@ -314,6 +314,27 @@ app.post("/api/upload-student-id", authMiddleware, upload.single("idImage"), asy
   }
 });
 
+const uploadVideo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+app.post("/api/upload-interview-video", authMiddleware, uploadVideo.single("video"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+
+    const uploadResult = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "confidai_session_videos", resource_type: "video" },
+        (error, result) => (error ? reject(error) : resolve(result))
+      );
+      stream.end(req.file.buffer);
+    });
+
+    res.json({ ok: true, url: uploadResult.secure_url });
+  } catch (err) {
+    console.error("Interview video upload failed:", err);
+    res.status(500).json({ error: "Failed to upload video" });
+  }
+});
+
 app.get("/api/admin/pending-students", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
@@ -543,7 +564,7 @@ Respond ONLY with valid JSON, no other text:
 
 app.post("/api/sessions", authMiddleware, async (req, res) => {
   try {
-    const { mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability } = req.body;
+    const { mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability, videoUrl } = req.body;
     const userResult = await pool.query("SELECT plan FROM users WHERE user_id = $1", [req.userId]);
     const plan = userResult.rows[0]?.plan || "free";
 
@@ -556,9 +577,9 @@ app.post("/api/sessions", authMiddleware, async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO sessions (user_id, mode, topic_or_role, overall_score, confidence, eye_contact, gesture, communication, hire_probability)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [req.userId, mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability || null]
+      `INSERT INTO sessions (user_id, mode, topic_or_role, overall_score, confidence, eye_contact, gesture, communication, hire_probability, video_url)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [req.userId, mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability || null, videoUrl || null]
     );
     res.json(result.rows[0]);
   } catch (err) {

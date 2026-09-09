@@ -44,8 +44,10 @@ export async function initDb() {
       gesture INTEGER,
       communication INTEGER,
       hire_probability INTEGER,
+      video_url TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS video_url TEXT;`);
   console.log("Database ready: users and sessions tables exist");
 }

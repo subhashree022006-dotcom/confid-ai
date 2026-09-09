@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar.jsx";
 import ScoreCard from "../../components/ScoreCard.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { saveSession } from "../../utils/sessionApi.js";
+import { saveSession, uploadInterviewVideo } from "../../utils/sessionApi.js";
 import {
   computeEyeContactScore,
   computeGestureScore,
@@ -19,15 +19,18 @@ export default function InterviewResults() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const savedRef = useRef(false);
+  const videoUploadRef = useRef(false);
   const [analyzing, setAnalyzing] = useState(true);
   const [aiResult, setAiResult] = useState(null);
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [videoUploading, setVideoUploading] = useState(false);
 
   if (!state) {
     navigate("/interview");
     return null;
   }
 
-  const { samples, transcript, form } = state;
+  const { samples, transcript, form, videoBlob } = state;
   const eyeContact = computeEyeContactScore(samples);
   const gesture = computeGestureScore(samples);
   const behavioralSummary = buildBehavioralSummary(samples);
@@ -71,6 +74,22 @@ export default function InterviewResults() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Upload the recorded video once, via our backend (Cloudinary credentials stay server-side).
+  useEffect(() => {
+    if (videoUploadRef.current || !videoBlob) return;
+    videoUploadRef.current = true;
+    setVideoUploading(true);
+    uploadInterviewVideo(videoBlob).then((result) => {
+      if (result.ok) {
+        setVideoUrl(result.url);
+      } else {
+        console.error("Video upload failed:", result.error);
+      }
+      setVideoUploading(false);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const confidence = aiResult?.confidence ?? null;
   const communication = aiResult?.communication ?? computeCommunicationScoreFallback(transcript);
   const hireProbability = aiResult?.hireProbability ?? null;
@@ -80,7 +99,7 @@ export default function InterviewResults() {
     : computeOverallScore({ eyeContact, gesture, communication });
 
   useEffect(() => {
-    if (savedRef.current || !user || analyzing) return;
+    if (savedRef.current || !user || analyzing || videoUploading) return;
     savedRef.current = true;
     saveSession({
       mode: "interview",
@@ -91,9 +110,10 @@ export default function InterviewResults() {
       gesture,
       communication,
       hireProbability: hireProbability ?? 0,
+      videoUrl,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analyzing]);
+  }, [analyzing, videoUploading]);
 
   if (analyzing) {
     return (
@@ -112,6 +132,23 @@ export default function InterviewResults() {
       <main className="max-w-3xl mx-auto px-6 py-10">
         <h1 className="text-2xl font-semibold mb-1">Interview results</h1>
         <p className="text-gray-400 mb-8">{form?.position} at {form?.company}</p>
+
+        {videoBlob && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 mb-6">
+            <p className="text-sm text-gray-400 mb-2">Session recording</p>
+            {videoUrl ? (
+              <video
+                src={videoUrl}
+                controls
+                className="w-full rounded-lg bg-black aspect-video"
+              />
+            ) : (
+              <div className="w-full rounded-lg bg-black/40 aspect-video flex items-center justify-center text-sm text-gray-500">
+                {videoUploading ? "Uploading recording..." : "Recording unavailable."}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6 text-center">
           <p className="text-sm text-gray-400 mb-1">Overall score</p>

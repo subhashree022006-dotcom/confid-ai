@@ -1,12 +1,10 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
-
-export default function CameraFeed({ active, onSample }) {
+export default function CameraFeed({ active, onSample, onStreamReady }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [error, setError] = useState(null);
-
   useEffect(() => {
     async function loadModels() {
       try {
@@ -23,12 +21,10 @@ export default function CameraFeed({ active, onSample }) {
     }
     loadModels();
   }, []);
-
   useEffect(() => {
     if (!active) return;
     let stream;
     let intervalId;
-
     async function start() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -37,11 +33,11 @@ export default function CameraFeed({ active, onSample }) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
+        onStreamReady?.(stream);
       } catch (e) {
         setError("Camera/microphone permission was denied.");
         return;
       }
-
       if (modelsLoaded) {
         intervalId = setInterval(async () => {
           if (!videoRef.current) return;
@@ -49,7 +45,6 @@ export default function CameraFeed({ active, onSample }) {
             .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
             .withFaceLandmarks()
             .withFaceExpressions();
-
           if (result) {
             const box = result.detection.box;
             const videoW = videoRef.current.videoWidth || 1;
@@ -69,14 +64,12 @@ export default function CameraFeed({ active, onSample }) {
         }, 700);
       }
     }
-
     start();
     return () => {
       clearInterval(intervalId);
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, [active, modelsLoaded]);
-
   return (
     <div className="w-full">
       <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
