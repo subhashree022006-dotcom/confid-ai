@@ -1,10 +1,12 @@
 ﻿import { useEffect, useRef, useState } from "react";
 import * as faceapi from "face-api.js";
+
 export default function CameraFeed({ active, onSample, onStreamReady }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [error, setError] = useState(null);
+
   useEffect(() => {
     async function loadModels() {
       try {
@@ -21,10 +23,16 @@ export default function CameraFeed({ active, onSample, onStreamReady }) {
     }
     loadModels();
   }, []);
+
+  // Starts the camera/mic stream ONCE when the session becomes active.
+  // Deliberately does NOT depend on modelsLoaded — if it did, this effect
+  // would re-run when models finish loading, tearing down and recreating
+  // the stream. That stops the original tracks mid-session, which kills
+  // the MediaRecorder in the parent (its state silently becomes
+  // "inactive"), so no video ever gets uploaded.
   useEffect(() => {
     if (!active) return;
     let stream;
-    let intervalId;
     async function start() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -36,40 +44,47 @@ export default function CameraFeed({ active, onSample, onStreamReady }) {
         onStreamReady?.(stream);
       } catch (e) {
         setError("Camera/microphone permission was denied.");
-        return;
-      }
-      if (modelsLoaded) {
-        intervalId = setInterval(async () => {
-          if (!videoRef.current) return;
-          const result = await faceapi
-            .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
-            .withFaceLandmarks()
-            .withFaceExpressions();
-          if (result) {
-            const box = result.detection.box;
-            const videoW = videoRef.current.videoWidth || 1;
-            const videoH = videoRef.current.videoHeight || 1;
-            const centerX = (box.x + box.width / 2) / videoW;
-            const centerY = (box.y + box.height / 2) / videoH;
-            onSample?.({
-              timestamp: Date.now(),
-              faceDetected: true,
-              centeredness: 1 - (Math.abs(centerX - 0.5) * 2 + Math.abs(centerY - 0.5) * 2) / 2,
-              expressions: result.expressions,
-              boxSize: (box.width * box.height) / (videoW * videoH),
-            });
-          } else {
-            onSample?.({ timestamp: Date.now(), faceDetected: false });
-          }
-        }, 700);
       }
     }
     start();
     return () => {
-      clearInterval(intervalId);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  // Runs face-detection sampling once models are loaded, reusing the
+  // already-running stream/video element. Separate effect so it never
+  // touches the camera stream itself.
+  useEffect(() => {
+    if (!active || !modelsLoaded) return;
+    const intervalId = setInterval(async () => {
+      if (!videoRef.current) return;
+      const result = await faceapi
+        .detectSingleFace(videoRef.current, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceExpressions();
+      if (result) {
+        const box = result.detection.box;
+        const videoW = videoRef.current.videoWidth || 1;
+        const videoH = videoRef.current.videoHeight || 1;
+        const centerX = (box.x + box.width / 2) / videoW;
+        const centerY = (box.y + box.height / 2) / videoH;
+        onSample?.({
+          timestamp: Date.now(),
+          faceDetected: true,
+          centeredness: 1 - (Math.abs(centerX - 0.5) * 2 + Math.abs(centerY - 0.5) * 2) / 2,
+          expressions: result.expressions,
+          boxSize: (box.width * box.height) / (videoW * videoH),
+        });
+      } else {
+        onSample?.({ timestamp: Date.now(), faceDetected: false });
+      }
+    }, 700);
+    return () => clearInterval(intervalId);
   }, [active, modelsLoaded]);
+
   return (
     <div className="w-full">
       <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
