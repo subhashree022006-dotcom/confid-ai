@@ -9,10 +9,16 @@ export async function askAI(messages, system) {
   const data = await res.json();
   return data.reply;
 }
-export function buildInterviewerSystemPrompt({ position, company, jobDescription }) {
+export function buildInterviewerSystemPrompt({ position, company, jobDescription, resumeText }) {
   return `You are an experienced, professional HR interviewer conducting a mock interview for the position of "${position}" at "${company}". Job description: ${jobDescription || "Not provided."}
 
-Ask one question at a time. After the candidate answers, follow this pattern:
+${resumeText ? `The candidate's resume is provided below. Use it to ask specific, personalized questions - about real projects they listed, technologies/skills they claim, gaps or transitions in their experience, and how their background fits this role. Reference specific things from the resume by name (a project title, a company, a skill) rather than asking generic questions. If something on the resume seems vague, thin, or inconsistent, probe it directly.
+
+Resume:
+"""
+${resumeText}
+"""
+` : ""}Ask one question at a time. After the candidate answers, follow this pattern:
 - If their answer was vague, generic, or lacked a specific example: ask a direct follow-up like "Can you give a specific example of that?" or "What was the actual outcome?"
 - If their answer mentioned something interesting (a project, a challenge, a decision): dig deeper with "Why did you choose that approach?" or "What would you do differently now?"
 - If their answer was already detailed and complete: briefly acknowledge it and move to a new topic.

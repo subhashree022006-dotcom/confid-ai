@@ -9,7 +9,11 @@ import multer from "multer";
 import { v2 as cloudinary } from "cloudinary";
 import { Resend } from "resend";
 import OpenAI from "openai";
+import { createRequire } from "module";
 import { pool, initDb } from "./db.js";
+
+const require = createRequire(import.meta.url);
+const pdfParse = require("pdf-parse");
 
 dotenv.config();
 const app = express();
@@ -332,6 +336,23 @@ app.post("/api/upload-interview-video", authMiddleware, uploadVideo.single("vide
   } catch (err) {
     console.error("Interview video upload failed:", err);
     res.status(500).json({ error: "Failed to upload video" });
+  }
+});
+
+const uploadResume = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+app.post("/api/parse-resume", authMiddleware, uploadResume.single("resume"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const data = await pdfParse(req.file.buffer);
+    const text = data.text.trim();
+    if (!text) return res.status(400).json({ error: "Could not extract text from this PDF. Try a different file." });
+    // Cap length so we don't blow up the prompt token budget
+    const trimmed = text.slice(0, 6000);
+    res.json({ ok: true, resumeText: trimmed });
+  } catch (err) {
+    console.error("Resume parse failed:", err);
+    res.status(500).json({ error: "Failed to parse resume" });
   }
 });
 
