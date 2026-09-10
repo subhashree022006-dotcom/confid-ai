@@ -508,16 +508,50 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-app.post("/api/analyze-session", async (req, res) => {
-  try {
-    const { transcript, behavioralSummary, mode, context } = req.body;
+function clampScore(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : 0;
+}
 
-    const wordCount = (transcript || "").trim().split(/\s+/).filter(Boolean).length;
+function getTranscriptMetrics(transcript, sessionDurationSeconds) {
+  const text = (transcript || "").trim();
+  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+  const fillerMatches = text.match(/\b(?:um+|uh+|erm+|ah+|like|actually|basically|literally|right)\b|\byou know\b|\bkind of\b|\bsort of\b/gi) || [];
+  const duration = Number(sessionDurationSeconds);
+  const speakingPaceWpm = Number.isFinite(duration) && duration >= 15
+    ? Math.round((wordCount / duration) * 60)
+    : null;
+
+  return { wordCount, fillerWordCount: fillerMatches.length, speakingPaceWpm };
+}
+
+function fallbackGoals(metrics) {
+  const goals = [];
+  if (metrics.fillerWordCount >= 5) {
+    goals.push({ title: "Use fewer filler words", action: "Pause briefly instead of saying filler words.", successMetric: `Keep fillers below ${Math.max(2, metrics.fillerWordCount - 3)} next time.` });
+  }
+  if (metrics.speakingPaceWpm && metrics.speakingPaceWpm > 170) {
+    goals.push({ title: "Slow down your pace", action: "Pause after each main point.", successMetric: "Aim for 120–160 words per minute." });
+  } else if (metrics.speakingPaceWpm && metrics.speakingPaceWpm < 100) {
+    goals.push({ title: "Build a steadier pace", action: "Complete each point before pausing.", successMetric: "Aim for 100–150 words per minute." });
+  }
+  goals.push({ title: "Structure one strong example", action: "Use Situation, Task, Action, and Result in one answer.", successMetric: "Include a specific outcome or number." });
+  return goals.slice(0, 3);
+}
+
+app.post("/api/analyze-session", async (req, res) => {
+  const { transcript, behavioralSummary, mode, context, sessionDurationSeconds } = req.body;
+  const metrics = getTranscriptMetrics(transcript, sessionDurationSeconds);
+  const isGD = mode === "group discussion";
+  try {
+    const wordCount = metrics.wordCount;
 
     const prompt = `You are a demanding, professional communication evaluator for a ${mode} practice session. You have high standards, similar to a strict university professor or a senior hiring manager. You do NOT give credit for effort alone - only for what was actually demonstrated.
 
 Context: ${context || "N/A"}
 Transcript word count: ${wordCount}
+Filler words detected: ${metrics.fillerWordCount}
+Speaking pace: ${metrics.speakingPaceWpm ? `${metrics.speakingPaceWpm} words per minute` : "unavailable"}
 
 Transcript of what the person said:
 """
@@ -550,18 +584,31 @@ CRITICAL RULES:
 - If the transcript doesn't actually address the given context, cap both scores at 30.
 - Do not round up to be encouraging. If performance is average, score it in the 41-60 range, not higher.
 - Most real, unpracticed people score in the 40-65 range. Scores above 75 should be rare and reserved for genuinely strong performances.
-
+${isGD ? `
+Since this is a Group Discussion with multiple simulated participants who interrupt, disagree, and pressure the candidate, ALSO score these GD-specific dimensions (0-100 each):
+- TURN_TAKING: Did the candidate wait for natural openings, or did they interrupt/get interrupted badly and fail to recover? High score = jumped in at good moments without being pushy or getting steamrolled.
+- LISTENING: Did the candidate's points actually respond to or build on what other participants said, or did they ignore the discussion and just state pre-formed opinions? High score = clear evidence they engaged with specific points others made.
+- PRESSURE_HANDLING: When challenged, interrupted, or disagreed with, did the candidate hold their ground calmly and respond with substance, or did they get flustered, go silent, or over-concede? High score = composed, substantive responses under pushback.
+` : ""}
 Respond ONLY with valid JSON, no other text:
 {
   "confidence": <0-100>,
   "communication": <0-100>,
+  "starScore": <0-100, score the candidate's use of Situation, Task, Action, Result in their examples; use 0 if no example was given>,
+  "starFeedback": "<one concise, evidence-based sentence about the strongest missing or demonstrated STAR element>",
+  "goals": [
+    { "title": "<short goal>", "action": "<one concrete action for the next practice>", "successMetric": "<a measurable target>" }
+  ],
   "reasoning": "<2-3 sentences citing SPECIFIC evidence from the transcript - quote or reference what was actually said or missing, not generic praise>",
-  "hireProbability": <0-100, ONLY if mode is interview, otherwise null. Be realistic - most practice attempts should NOT suggest high hire probability unless truly excellent>
+  "hireProbability": <0-100, ONLY if mode is interview, otherwise null. Be realistic - most practice attempts should NOT suggest high hire probability unless truly excellent>${isGD ? `,
+  "turnTaking": <0-100>,
+  "listening": <0-100>,
+  "pressureHandling": <0-100>` : ""}
 }`;
 
     const response = await groq.chat.completions.create({
       model: "openai/gpt-oss-120b",
-      max_tokens: 450,
+      max_tokens: 600,
       messages: [
         { role: "system", content: "You are a strict, evidence-based evaluator. You never inflate scores to be encouraging. You cite specific evidence from the transcript in your reasoning. Respond only with valid JSON, no markdown formatting." },
         { role: "user", content: prompt },
@@ -580,16 +627,40 @@ Respond ONLY with valid JSON, no other text:
       }
     }
 
-    res.json(parsed);
+    parsed.starScore = clampScore(parsed.starScore);
+    parsed.starFeedback = typeof parsed.starFeedback === "string" ? parsed.starFeedback : "Use a clear Situation, Task, Action, and Result when giving an example.";
+    parsed.goals = Array.isArray(parsed.goals)
+      ? parsed.goals.filter((goal) => goal && typeof goal.title === "string" && typeof goal.action === "string" && typeof goal.successMetric === "string").slice(0, 3)
+      : [];
+    if (parsed.goals.length < 2) parsed.goals = fallbackGoals(metrics);
+
+    if (isGD) {
+      parsed.turnTaking = clampScore(parsed.turnTaking);
+      parsed.listening = clampScore(parsed.listening);
+      parsed.pressureHandling = clampScore(parsed.pressureHandling);
+    }
+
+    res.json({ ...parsed, ...metrics });
   } catch (err) {
     console.error("Session analysis failed:", err);
-    res.status(500).json({ error: "Analysis failed", confidence: null, communication: null, reasoning: "AI analysis unavailable", hireProbability: null });
+    res.status(500).json({
+      error: "Analysis failed",
+      confidence: null,
+      communication: null,
+      reasoning: "AI analysis unavailable",
+      hireProbability: null,
+      starScore: 0,
+      starFeedback: "STAR analysis is unavailable for this session.",
+      goals: fallbackGoals(metrics),
+      ...(isGD ? { turnTaking: 0, listening: 0, pressureHandling: 0 } : {}),
+      ...metrics,
+    });
   }
 });
 
 app.post("/api/sessions", authMiddleware, async (req, res) => {
   try {
-    const { mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability, videoUrl } = req.body;
+    const { mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability, videoUrl, fillerWordCount, speakingPaceWpm, starScore, goals } = req.body;
     const userResult = await pool.query("SELECT plan FROM users WHERE user_id = $1", [req.userId]);
     const plan = userResult.rows[0]?.plan || "free";
 
@@ -602,9 +673,9 @@ app.post("/api/sessions", authMiddleware, async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO sessions (user_id, mode, topic_or_role, overall_score, confidence, eye_contact, gesture, communication, hire_probability, video_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [req.userId, mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability || null, videoUrl || null]
+      `INSERT INTO sessions (user_id, mode, topic_or_role, overall_score, confidence, eye_contact, gesture, communication, hire_probability, video_url, filler_word_count, speaking_pace_wpm, star_score, goals)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [req.userId, mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability || null, videoUrl || null, fillerWordCount ?? null, speakingPaceWpm ?? null, starScore ?? null, Array.isArray(goals) ? JSON.stringify(goals) : null]
     );
     res.json(result.rows[0]);
   } catch (err) {
