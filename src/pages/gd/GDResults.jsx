@@ -97,6 +97,9 @@ export default function GDResults() {
             goals: [],
             fillerWordCount: 0,
             speakingPaceWpm: null,
+            turnTaking: 0,
+            listening: 0,
+            pressureHandling: 0,
           });
           setAnalyzing(false);
         }
@@ -115,6 +118,9 @@ export default function GDResults() {
   const fillerWordCount = aiResult?.fillerWordCount ?? 0;
   const speakingPaceWpm = aiResult?.speakingPaceWpm ?? null;
   const goals = aiResult?.goals ?? [];
+  const turnTaking = aiResult?.turnTaking ?? 0;
+  const listening = aiResult?.listening ?? 0;
+  const pressureHandling = aiResult?.pressureHandling ?? 0;
 
   const overall = confidence !== null
     ? computeOverallScore({ confidence, eyeContact, gesture, communication })
@@ -223,7 +229,13 @@ export default function GDResults() {
           <ScoreCard label="Eye contact" score={eyeContact} />
           <ScoreCard label="Gesture" score={gesture} />
           <ScoreCard label="Communication" score={communication} />
-          <ScoreCard label="STAR structure" score={starScore} />
+        </div>
+
+        <p className="text-sm text-gray-400 mb-2 mt-2">Panel discussion skills</p>
+        <div className="grid sm:grid-cols-3 gap-4 mb-6">
+          <ScoreCard label="Turn-taking" score={turnTaking} />
+          <ScoreCard label="Listening" score={listening} />
+          <ScoreCard label="Handling pressure" score={pressureHandling} />
         </div>
 
         <div className="grid sm:grid-cols-2 gap-4 mb-6">
@@ -243,13 +255,6 @@ export default function GDResults() {
           <p className="text-sm text-gray-400 mb-1">Communication level</p>
           <p className="text-2xl font-semibold text-cyan-300">{level}</p>
         </div>
-
-        {aiResult?.starFeedback && (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
-            <p className="text-sm text-gray-400 mb-2">Structure feedback</p>
-            <p className="text-gray-200">{aiResult.starFeedback}</p>
-          </div>
-        )}
 
         {aiResult?.reasoning && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
