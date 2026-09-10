@@ -30,7 +30,7 @@ export async function uploadInterviewVideo(videoBlob) {
   }
 }
 
-export async function saveSession({ mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability, videoUrl }) {
+export async function saveSession({ mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability, videoUrl, fillerWordCount, speakingPaceWpm, starScore, goals }) {
   try {
     const res = await fetch(`${API_BASE}/api/sessions`, {
       method: "POST",
@@ -38,7 +38,7 @@ export async function saveSession({ mode, topicOrRole, overallScore, confidence,
         "Content-Type": "application/json",
         Authorization: `Bearer ${getToken()}`,
       },
-      body: JSON.stringify({ mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability, videoUrl }),
+      body: JSON.stringify({ mode, topicOrRole, overallScore, confidence, eyeContact, gesture, communication, hireProbability, videoUrl, fillerWordCount, speakingPaceWpm, starScore, goals }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));

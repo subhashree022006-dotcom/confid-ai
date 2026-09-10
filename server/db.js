@@ -45,9 +45,19 @@ export async function initDb() {
       communication INTEGER,
       hire_probability INTEGER,
       video_url TEXT,
+      filler_word_count INTEGER,
+      speaking_pace_wpm INTEGER,
+      star_score INTEGER,
+      goals TEXT,
+      goals_result TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS video_url TEXT;`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS filler_word_count INTEGER;`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS speaking_pace_wpm INTEGER;`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS star_score INTEGER;`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS goals TEXT;`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS goals_result TEXT;`);
   console.log("Database ready: users and sessions tables exist");
 }

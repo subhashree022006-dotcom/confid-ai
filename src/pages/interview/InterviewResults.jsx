@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar.jsx";
 import ScoreCard from "../../components/ScoreCard.jsx";
 import { useAuth } from "../../context/AuthContext.jsx";
-import { saveSession, uploadInterviewVideo } from "../../utils/sessionApi.js";
+import { saveSession, uploadInterviewVideo, fetchSessionHistory } from "../../utils/sessionApi.js";
 import {
   computeEyeContactScore,
   computeGestureScore,
@@ -32,6 +32,7 @@ export default function InterviewResults() {
   const [aiResult, setAiResult] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoUploading, setVideoUploading] = useState(false);
+  const [previousSession, setPreviousSession] = useState(null);
 
   if (!state) {
     navigate("/interview");
@@ -43,11 +44,40 @@ export default function InterviewResults() {
   const gesture = computeGestureScore(samples);
   const behavioralSummary = buildBehavioralSummary(samples);
 
+  // Rough session duration from the behavioral sample timestamps (ms apart, first to last)
+  const sessionDurationSeconds =
+    samples && samples.length > 1
+      ? Math.round((samples[samples.length - 1].timestamp - samples[0].timestamp) / 1000)
+      : null;
+
+  // Fetch the previous interview session (for its goals) once we know the user.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    fetchSessionHistory(user.userId).then((history) => {
+      if (cancelled) return;
+      const previousInterview = (history || []).find((s) => s.mode === "interview");
+      if (previousInterview) setPreviousSession(previousInterview);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   useEffect(() => {
     let cancelled = false;
 
     async function analyze() {
       try {
+        let previousGoals = null;
+        if (previousSession?.goals) {
+          try {
+            const parsed = typeof previousSession.goals === "string" ? JSON.parse(previousSession.goals) : previousSession.goals;
+            previousGoals = Array.isArray(parsed) ? parsed.map((g) => g.title || g).filter(Boolean) : null;
+          } catch {
+            previousGoals = null;
+          }
+        }
+
         const res = await fetch(`${API_BASE}/api/analyze-session`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -56,6 +86,8 @@ export default function InterviewResults() {
             behavioralSummary,
             mode: "interview",
             context: `Interviewing for ${form?.position || "a role"} at ${form?.company || "a company"}`,
+            sessionDurationSeconds,
+            previousGoals,
           }),
         });
         const data = await res.json();
@@ -71,16 +103,24 @@ export default function InterviewResults() {
             communication: computeCommunicationScoreFallback(transcript),
             reasoning: "AI analysis was unavailable, showing basic estimate instead.",
             hireProbability: null,
+            starScore: 0,
+            starFeedback: "",
+            goals: [],
+            fillerWordCount: 0,
+            speakingPaceWpm: null,
           });
           setAnalyzing(false);
         }
       }
     }
 
+    // Wait for the previous-session lookup to resolve (or fail) before analyzing,
+    // so previousGoals context is available on the first request. If the user
+    // has no history, previousSession stays null and previousGoals is just null.
     analyze();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [previousSession]);
 
   useEffect(() => {
     if (videoUploadRef.current || !videoBlob) return;
@@ -100,6 +140,10 @@ export default function InterviewResults() {
   const confidence = aiResult?.confidence ?? null;
   const communication = aiResult?.communication ?? computeCommunicationScoreFallback(transcript);
   const hireProbability = aiResult?.hireProbability ?? null;
+  const starScore = aiResult?.starScore ?? 0;
+  const fillerWordCount = aiResult?.fillerWordCount ?? 0;
+  const speakingPaceWpm = aiResult?.speakingPaceWpm ?? null;
+  const goals = aiResult?.goals ?? [];
 
   const overall = confidence !== null
     ? computeOverallScore({ confidence, eyeContact, gesture, communication })
@@ -118,6 +162,10 @@ export default function InterviewResults() {
       communication,
       hireProbability: hireProbability ?? 0,
       videoUrl,
+      fillerWordCount,
+      speakingPaceWpm,
+      starScore,
+      goals,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analyzing, videoUploading]);
@@ -126,6 +174,42 @@ export default function InterviewResults() {
     if (!videoRef.current) return;
     videoRef.current.currentTime = timestamp;
     videoRef.current.play();
+  }
+
+  // Compares this session's metrics against the previous session's goals,
+  // to show a simple ✅/⚠️ outcome for each goal the user was working on.
+  function evaluateGoalOutcome(goalTitle) {
+    const title = goalTitle.toLowerCase();
+    if (title.includes("filler")) {
+      if (!previousSession?.filler_word_count) return null;
+      return fillerWordCount < previousSession.filler_word_count
+        ? { met: true, note: `Filler words dropped to ${fillerWordCount} (was ${previousSession.filler_word_count}).` }
+        : { met: false, note: `Filler words still at ${fillerWordCount} (was ${previousSession.filler_word_count}).` };
+    }
+    if (title.includes("pace") || title.includes("slow") || title.includes("speed")) {
+      if (!speakingPaceWpm) return null;
+      const inRange = speakingPaceWpm >= 100 && speakingPaceWpm <= 160;
+      return inRange
+        ? { met: true, note: `Pace is now ${speakingPaceWpm} wpm.` }
+        : { met: false, note: `Pace is ${speakingPaceWpm} wpm — still outside 100-160.` };
+    }
+    if (title.includes("star") || title.includes("structure") || title.includes("example")) {
+      if (!previousSession?.star_score && previousSession?.star_score !== 0) return null;
+      return starScore > previousSession.star_score
+        ? { met: true, note: `STAR structure improved to ${starScore}% (was ${previousSession.star_score}%).` }
+        : { met: false, note: `STAR structure still at ${starScore}% (was ${previousSession.star_score}%).` };
+    }
+    return null;
+  }
+
+  let previousGoalsList = [];
+  if (previousSession?.goals) {
+    try {
+      const parsed = typeof previousSession.goals === "string" ? JSON.parse(previousSession.goals) : previousSession.goals;
+      previousGoalsList = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      previousGoalsList = [];
+    }
   }
 
   if (analyzing) {
@@ -145,6 +229,28 @@ export default function InterviewResults() {
       <main className="max-w-3xl mx-auto px-6 py-10">
         <h1 className="text-2xl font-semibold mb-1">Interview results</h1>
         <p className="text-gray-400 mb-8">{form?.position} at {form?.company}</p>
+
+        {previousGoalsList.length > 0 && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+            <p className="text-sm text-gray-400 mb-3">How you did on last time's goals</p>
+            <div className="space-y-2">
+              {previousGoalsList.map((goal, i) => {
+                const outcome = evaluateGoalOutcome(goal.title || "");
+                return (
+                  <div key={i} className="text-sm">
+                    <span className="mr-2">
+                      {outcome === null ? "•" : outcome.met ? "✅" : "⚠️"}
+                    </span>
+                    <span className={outcome?.met ? "text-emerald-300" : outcome === null ? "text-gray-300" : "text-amber-300"}>
+                      {goal.title}
+                    </span>
+                    {outcome && <span className="text-gray-500"> — {outcome.note}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {videoBlob && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4 mb-6">
@@ -200,12 +306,48 @@ export default function InterviewResults() {
           <ScoreCard label="Eye contact" score={eyeContact} />
           <ScoreCard label="Gesture" score={gesture} />
           <ScoreCard label="Communication" score={communication} />
+          <ScoreCard label="STAR structure" score={starScore} />
         </div>
+
+        <div className="grid sm:grid-cols-2 gap-4 mb-6">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm text-gray-400 mb-1">Filler words</p>
+            <p className="text-2xl font-semibold text-white">{fillerWordCount}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm text-gray-400 mb-1">Speaking pace</p>
+            <p className="text-2xl font-semibold text-white">
+              {speakingPaceWpm ? `${speakingPaceWpm} wpm` : "N/A"}
+            </p>
+          </div>
+        </div>
+
+        {aiResult?.starFeedback && (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
+            <p className="text-sm text-gray-400 mb-2">STAR structure feedback</p>
+            <p className="text-gray-200">{aiResult.starFeedback}</p>
+          </div>
+        )}
 
         {aiResult?.reasoning && (
           <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 mb-6">
             <p className="text-sm text-gray-400 mb-2">Coach feedback</p>
             <p className="text-gray-200">{aiResult.reasoning}</p>
+          </div>
+        )}
+
+        {goals.length > 0 && (
+          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/[0.04] p-6 mb-6">
+            <p className="text-sm text-cyan-300 mb-3 font-semibold">Your goals for next practice</p>
+            <div className="space-y-3">
+              {goals.map((goal, i) => (
+                <div key={i} className="text-sm">
+                  <p className="text-white font-medium">{goal.title}</p>
+                  <p className="text-gray-400">{goal.action}</p>
+                  <p className="text-gray-500 text-xs mt-0.5">Target: {goal.successMetric}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

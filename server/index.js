@@ -1,16 +1,16 @@
-﻿````js
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import crypto from "crypto";
-import Razorpay from "razorpay";
+import { createRequire } from "module";
+import { Pool } from "pg";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
 import { v2 as cloudinary } from "cloudinary";
 import { Resend } from "resend";
 import OpenAI from "openai";
-import { createRequire } from "module";
 import { pool, initDb } from "./db.js";
 
 const require = createRequire(import.meta.url);
