@@ -1,4 +1,3 @@
-﻿```jsx
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -72,6 +71,7 @@ export default function Dashboard() {
 
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historyError, setHistoryError] = useState("");
   const [selectedMode, setSelectedMode] = useState("interview");
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -93,10 +93,28 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user) return;
 
-    fetchSessionHistory(user.userId).then((data) => {
-      setHistory(data);
-      setLoadingHistory(false);
-    });
+    let cancelled = false;
+    setLoadingHistory(true);
+    setHistoryError("");
+
+    fetchSessionHistory(user.userId)
+      .then((data) => {
+        if (cancelled) return;
+        setHistory(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => {
+        console.error(err);
+        if (cancelled) return;
+        setHistoryError("Couldn't load your session history.");
+        setHistory([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingHistory(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   const avgScore = history.length
@@ -112,7 +130,7 @@ export default function Dashboard() {
       .slice()
       .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
       .map((s, i) => ({
-        attempt: `#${i + 1}`,
+        attempt: "#" + (i + 1),
         date: new Date(s.created_at).toLocaleDateString(),
         score: s.overall_score,
       }));
@@ -169,7 +187,7 @@ export default function Dashboard() {
         }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         throw new Error(data.error || "Coach request failed.");
@@ -269,7 +287,7 @@ export default function Dashboard() {
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <div className="h-10 w-10 rounded-xl bg-cyan-400/10 border border-cyan-400/20 flex items-center justify-center text-xl">
-                    🤖
+                    ??
                   </div>
 
                   <div>
@@ -374,7 +392,13 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {!loadingHistory && history.length > 0 && (
+        {!loadingHistory && historyError && (
+          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 mb-12 text-sm text-rose-300">
+            {historyError}
+          </div>
+        )}
+
+        {!loadingHistory && !historyError && history.length > 0 && (
           <div className="border-t border-white/10 pt-10 mb-12">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
               <h2 className="text-xl font-semibold">Average score by mode</h2>
@@ -443,7 +467,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {!loadingHistory && history.length > 0 && (
+        {!loadingHistory && !historyError && history.length > 0 && (
           <div className="border-t border-white/10 pt-10 mb-12">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
               <h2 className="text-xl font-semibold">Progress over time</h2>
@@ -493,6 +517,19 @@ export default function Dashboard() {
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={modeTrend}>
+                    <defs>
+                      <linearGradient
+                        id="trendGradient"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop offset="0%" stopColor="#22d3ee" />
+                        <stop offset="100%" stopColor="#3b82f6" />
+                      </linearGradient>
+                    </defs>
+
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="rgba(255,255,255,0.08)"
@@ -530,19 +567,6 @@ export default function Dashboard() {
                       radius={[6, 6, 0, 0]}
                       fill="url(#trendGradient)"
                     />
-
-                    <defs>
-                      <linearGradient
-                        id="trendGradient"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop offset="0%" stopColor="#22d3ee" />
-                        <stop offset="100%" stopColor="#3b82f6" />
-                      </linearGradient>
-                    </defs>
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -557,16 +581,16 @@ export default function Dashboard() {
             <p className="text-gray-500 text-sm">
               Loading your session history...
             </p>
-          ) : history.length === 0 ? (
+          ) : historyError ? null : history.length === 0 ? (
             <p className="text-gray-500 text-sm">
               No sessions yet - complete a practice session above and it will
               show up here.
             </p>
           ) : (
             <div className="rounded-2xl border border-white/10 bg-white/[0.02] divide-y divide-white/10">
-              {history.map((s) => (
+              {history.map((s, i) => (
                 <div
-                  key={s.id}
+                  key={s.id ?? i}
                   className="flex items-center justify-between px-5 py-4"
                 >
                   <div>
@@ -646,4 +670,3 @@ export default function Dashboard() {
     </div>
   );
 }
-```
