@@ -1,5 +1,6 @@
 ﻿import express from "express";
 import cors from "cors";
+import Razorpay from"razorpay";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
