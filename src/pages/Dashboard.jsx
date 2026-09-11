@@ -286,9 +286,11 @@ export default function Dashboard() {
             <div className="relative flex flex-col md:flex-row md:items-center md:justify-between gap-6">
               <div>
                 <div className="flex items-center gap-3 mb-2">
-                  <div className="h-10 w-10 rounded-xl bg-cyan-400/10 border border-cyan-400/20 flex items-center justify-center text-xl">
-                    ??
-                  </div>
+                  <img
+                    src="/coach-icon-clean.png"
+                    alt="Confid Coach"
+                    className="h-10 w-10 rounded-xl object-cover"
+                  />
 
                   <div>
                     <h2 className="text-xl font-bold">
