@@ -1,6 +1,6 @@
 ﻿import express from "express";
 import cors from "cors";
-import Razorpay from"razorpay";
+import Razorpay from "razorpay";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -965,7 +965,8 @@ app.post("/api/chat", async (req, res) => {
     const response =
       await groq.chat.completions.create({
         model: "openai/gpt-oss-120b",
-        max_tokens: 300,
+        max_tokens: 800,
+        temperature: 0.2,
         messages: [
           {
             role: "system",
@@ -1131,7 +1132,7 @@ Respond ONLY with valid JSON in this exact format:
       const response =
         await groq.chat.completions.create({
           model: "openai/gpt-oss-120b",
-          max_tokens: 500,
+          max_tokens: 800,
           temperature: 0.2,
           messages: [
             {
@@ -1170,8 +1171,13 @@ Respond ONLY with valid JSON in this exact format:
           parseError
         );
 
+        const match = cleaned.match(/"answer"\s*:\s*"([\s\S]*)/);
+        const fallbackAnswer = match
+          ? match[1].replace(/"\s*}?\s*$/, "").trim()
+          : "I couldn't generate a complete answer. Please try asking again.";
+
         return res.json({
-          answer: cleaned,
+          answer: fallbackAnswer,
         });
       }
 
