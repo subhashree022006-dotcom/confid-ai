@@ -5,7 +5,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-30 border-b border-white/10 bg-slate-950/80 backdrop-blur">
       <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4">
         <Link to="/" className="flex items-center gap-2">
-          <img src="/logo.png" alt="Confid.ai logo" className="w-9 h-9 rounded-lg object-cover" />
+          <img src="/logo-final.png" alt="Confid.ai logo" className="w-9 h-9 rounded-lg object-cover" />
           <span className="font-semibold text-lg">
             Confid<span className="text-blue-400">.ai</span>
           </span>
