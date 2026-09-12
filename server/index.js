@@ -13,6 +13,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { Resend } from "resend";
 import OpenAI from "openai";
 import { pool, initDb } from "./db.js";
+import mammoth from "mammoth";
 
 const require = createRequire(import.meta.url);
 const { PDFParse } = require("pdf-parse");
@@ -664,7 +665,160 @@ app.post(
     }
   }
 );
+// ============================================================
+// ATS SCORE CHECK
+// ============================================================
+app.post(
+  "/api/ats-check",
+  authMiddleware,
+  uploadResume.single("resume"),
+  async (req, res) => {
+    try {
+      const { jobDescription } = req.body;
 
+      if (!req.file) {
+        return res.status(400).json({
+          error: "Please upload a resume file (PDF or DOCX).",
+        });
+      }
+
+      if (!jobDescription || !jobDescription.trim()) {
+        return res.status(400).json({
+          error: "Please paste the target job description.",
+        });
+      }
+
+      let resumeText = "";
+      const mime = req.file.mimetype;
+      let parser;
+
+      try {
+        if (mime === "application/pdf") {
+          parser = new PDFParse({ data: req.file.buffer });
+          const data = await parser.getText();
+          resumeText = data.text.trim();
+        } else if (
+          mime ===
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ) {
+          const result = await mammoth.extractRawText({
+            buffer: req.file.buffer,
+          });
+          resumeText = result.value.trim();
+        } else {
+          return res.status(400).json({
+            error:
+              "Unsupported file type. Please upload a PDF or DOCX resume.",
+          });
+        }
+      } finally {
+        if (parser) {
+          await parser.destroy();
+        }
+      }
+
+      if (!resumeText) {
+        return res.status(400).json({
+          error:
+            "Could not extract text from this file. Try a different resume.",
+        });
+      }
+
+      const trimmedResume = resumeText.slice(0, 6000);
+      const trimmedJD = jobDescription.trim().slice(0, 4000);
+
+      const atsPrompt = `
+You are an ATS (Applicant Tracking System) resume evaluator. Compare the resume below against the target job description and produce a strict, evidence-based ATS compatibility report.
+
+JOB DESCRIPTION:
+"""
+${trimmedJD}
+"""
+
+RESUME TEXT:
+"""
+${trimmedResume}
+"""
+
+RULES:
+1. Score realistically. Most resumes score 40-75. Reserve 85+ for excellent, near-perfect keyword and formatting matches.
+2. Base "missingKeywords" ONLY on skills/terms that appear in the job description but are absent or weakly represented in the resume.
+3. "formattingIssues" should flag ATS-parsing risks you can infer from the raw extracted text - e.g. signs of multi-column layout (broken line order), tables (misaligned fragments), missing section headers, or unusual characters from embedded images/icons. If the text extracted cleanly with clear sections, say so and keep this list short.
+4. "suggestions" must be specific and actionable, tied to the actual gaps found - not generic advice.
+5. Do not invent skills or experience that aren't in the resume text.
+
+Respond ONLY with valid JSON in this exact format:
+{
+  "matchScore": <0-100 integer>,
+  "missingKeywords": ["keyword1", "keyword2", ...],
+  "formattingIssues": ["issue1", "issue2", ...],
+  "suggestions": ["suggestion1", "suggestion2", ...]
+}
+`;
+
+      const response = await groq.chat.completions.create({
+        model: "openai/gpt-oss-120b",
+        max_tokens: 800,
+        temperature: 0.2,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a strict, evidence-based ATS resume evaluator. Respond only with valid JSON, no markdown formatting, no extra commentary.",
+          },
+          {
+            role: "user",
+            content: atsPrompt,
+          },
+        ],
+      });
+
+      const raw = response.choices?.[0]?.message?.content?.trim();
+
+      if (!raw) {
+        throw new Error("Empty response from ATS model");
+      }
+
+      const cleaned = raw
+        .replace(/^```json\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+
+      let parsed;
+
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch (parseError) {
+        console.error("ATS JSON parse failed:", parseError);
+        return res.status(500).json({
+          error: "Could not generate a reliable ATS report. Please try again.",
+        });
+      }
+
+      const matchScore = Number.isFinite(Number(parsed.matchScore))
+        ? Math.max(0, Math.min(100, Math.round(Number(parsed.matchScore))))
+        : 0;
+
+      res.json({
+        matchScore,
+        missingKeywords: Array.isArray(parsed.missingKeywords)
+          ? parsed.missingKeywords.filter((k) => typeof k === "string")
+          : [],
+        formattingIssues: Array.isArray(parsed.formattingIssues)
+          ? parsed.formattingIssues.filter((f) => typeof f === "string")
+          : [],
+        suggestions: Array.isArray(parsed.suggestions)
+          ? parsed.suggestions.filter((s) => typeof s === "string")
+          : [],
+      });
+    } catch (err) {
+      console.error("ATS check failed:", err);
+      res.status(500).json({
+        error: "ATS Score check is temporarily unavailable.",
+      });
+    }
+  }
+);
 app.get(
   "/api/admin/pending-students",
   authMiddleware,

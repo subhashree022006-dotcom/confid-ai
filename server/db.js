@@ -32,6 +32,7 @@ export async function initDb() {
       created_at TIMESTAMP DEFAULT NOW()
     );
   `);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS sessions (
       id SERIAL PRIMARY KEY,
@@ -59,5 +60,26 @@ export async function initDb() {
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS star_score INTEGER;`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS goals TEXT;`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS goals_result TEXT;`);
-  console.log("Database ready: users and sessions tables exist");
+
+  // ATS Score check history — created after users, since it FK-references users(user_id)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ats_checks (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      resume_filename TEXT,
+      job_description TEXT,
+      match_score INTEGER,
+      missing_keywords JSONB,
+      formatting_issues JSONB,
+      suggestions JSONB,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_ats_checks_user_id
+    ON ats_checks (user_id, created_at DESC);
+  `);
+
+  console.log("Database ready: users, sessions, and ats_checks tables exist");
 }

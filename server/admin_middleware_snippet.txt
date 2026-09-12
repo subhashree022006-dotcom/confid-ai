@@ -1,0 +1,10 @@
+﻿function adminMiddleware(req, res, next) {
+  if (req.userId !== ADMIN_USER_ID) {
+    return res.status(403).json({ error: "Admin access only" });
+  }
+  const adminPassword = req.headers["x-admin-password"];
+  if (adminPassword !== process.env.ADMIN_PASSWORD) {
+    return res.status(403).json({ error: "Invalid admin password" });
+  }
+  next();
+}
