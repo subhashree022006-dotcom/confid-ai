@@ -49,8 +49,15 @@ const MODES = [
     color: "from-emerald-500/20 to-emerald-500/0",
     barColor: "#10b981",
   },
+  {
+    title: "ATS Score",
+    key: "ats",
+    desc: "Upload your resume and a job description to check your ATS match score, missing keywords, and formatting issues.",
+    path: "/ats-check",
+    color: "from-purple-500/20 to-purple-500/0",
+    barColor: "#a855f7",
+  },
 ];
-
 const MODE_LABELS = {
   interview: "Interview",
   presentation: "Presentation",

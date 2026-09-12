@@ -26,6 +26,7 @@ import StageSpeechResults from "./pages/stagespeech/StageSpeechResults.jsx";
 import GDSetup from "./pages/gd/GDSetup.jsx";
 import GDSession from "./pages/gd/GDSession.jsx";
 import GDResults from "./pages/gd/GDResults.jsx";
+import AtsCheck from "./pages/AtsCheck.jsx";
 export default function App() {
   return (
     <Routes>
@@ -53,6 +54,7 @@ export default function App() {
       <Route path="/gd" element={<ProtectedRoute><GDSetup /></ProtectedRoute>} />
       <Route path="/gd/session" element={<ProtectedRoute><GDSession /></ProtectedRoute>} />
       <Route path="/gd/results" element={<ProtectedRoute><GDResults /></ProtectedRoute>} />
+      <Route path="/ats-check" element={<ProtectedRoute><AtsCheck /></ProtectedRoute>} />
       <Route path="/admin-confidai-2026" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
