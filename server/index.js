@@ -665,6 +665,7 @@ app.post(
     }
   }
 );
+
 // ============================================================
 // ATS SCORE CHECK
 // ============================================================
@@ -799,17 +800,53 @@ Respond ONLY with valid JSON in this exact format:
         ? Math.max(0, Math.min(100, Math.round(Number(parsed.matchScore))))
         : 0;
 
+      const missingKeywords = Array.isArray(parsed.missingKeywords)
+        ? parsed.missingKeywords.filter((k) => typeof k === "string")
+        : [];
+
+      const formattingIssues = Array.isArray(parsed.formattingIssues)
+        ? parsed.formattingIssues.filter((f) => typeof f === "string")
+        : [];
+
+      const suggestions = Array.isArray(parsed.suggestions)
+        ? parsed.suggestions.filter((s) => typeof s === "string")
+        : [];
+
+      let savedCheckId = null;
+      try {
+        const saveResult = await pool.query(
+          `INSERT INTO ats_checks (
+            user_id,
+            resume_filename,
+            job_description,
+            match_score,
+            missing_keywords,
+            formatting_issues,
+            suggestions
+          )
+          VALUES ($1,$2,$3,$4,$5,$6,$7)
+          RETURNING id, created_at`,
+          [
+            req.userId,
+            req.file.originalname || null,
+            trimmedJD,
+            matchScore,
+            JSON.stringify(missingKeywords),
+            JSON.stringify(formattingIssues),
+            JSON.stringify(suggestions),
+          ]
+        );
+        savedCheckId = saveResult.rows[0].id;
+      } catch (saveErr) {
+        console.error("ATS check history save failed:", saveErr);
+      }
+
       res.json({
+        id: savedCheckId,
         matchScore,
-        missingKeywords: Array.isArray(parsed.missingKeywords)
-          ? parsed.missingKeywords.filter((k) => typeof k === "string")
-          : [],
-        formattingIssues: Array.isArray(parsed.formattingIssues)
-          ? parsed.formattingIssues.filter((f) => typeof f === "string")
-          : [],
-        suggestions: Array.isArray(parsed.suggestions)
-          ? parsed.suggestions.filter((s) => typeof s === "string")
-          : [],
+        missingKeywords,
+        formattingIssues,
+        suggestions,
       });
     } catch (err) {
       console.error("ATS check failed:", err);
@@ -819,6 +856,77 @@ Respond ONLY with valid JSON in this exact format:
     }
   }
 );
+
+// ============================================================
+// ATS CHECK HISTORY
+// ============================================================
+app.get(
+  "/api/ats-checks",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT
+          id,
+          resume_filename,
+          match_score,
+          missing_keywords,
+          formatting_issues,
+          suggestions,
+          created_at
+         FROM ats_checks
+         WHERE user_id = $1
+         ORDER BY created_at DESC
+         LIMIT 20`,
+        [req.userId]
+      );
+
+      res.json(result.rows);
+    } catch (err) {
+      console.error("ATS check history fetch failed:", err);
+      res.status(500).json({
+        error: "Failed to fetch ATS check history",
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/ats-checks/:id",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT
+          id,
+          resume_filename,
+          job_description,
+          match_score,
+          missing_keywords,
+          formatting_issues,
+          suggestions,
+          created_at
+         FROM ats_checks
+         WHERE id = $1 AND user_id = $2`,
+        [req.params.id, req.userId]
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({
+          error: "ATS check not found",
+        });
+      }
+
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error("ATS check fetch failed:", err);
+      res.status(500).json({
+        error: "Failed to fetch ATS check",
+      });
+    }
+  }
+);
+
 app.get(
   "/api/admin/pending-students",
   authMiddleware,
@@ -1148,7 +1256,6 @@ app.post("/api/chat", async (req, res) => {
 
 // ============================================================
 // CONFID COACH
-// Uses ONLY the logged-in user's own session history.
 // ============================================================
 app.post(
   "/api/coach",
@@ -1167,8 +1274,6 @@ app.post(
         });
       }
 
-      // Only retrieve sessions belonging to the
-      // authenticated user.
       const result = await pool.query(
         `SELECT
           id,
