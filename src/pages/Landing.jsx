@@ -1,18 +1,18 @@
-﻿import { Link } from "react-router-dom";
+import { Link } from "react-router-dom";
 import Navbar from "../components/Navbar.jsx";
 
 const MODES = [
-  { icon: "Briefcase", title: "Interview", desc: "AI HR interview tailored to your role, company & job description.", tags: ["Confidence", "Eye contact", "Fluency", "Hiring probability"], color: "from-blue-500/20 to-blue-500/0" },
-  { icon: "Screen", title: "Presentation", desc: "Upload your PPT/PDF, present, then face the Ask Viva round.", tags: ["Voice clarity", "Pacing", "Engagement", "Explanation"], color: "from-cyan-500/20 to-cyan-500/0" },
-  { icon: "Mic", title: "Stage Speech", desc: "Own the stage - presence, delivery & body language analysis.", tags: ["Stage presence", "Delivery", "Gestures", "Body language"], color: "from-yellow-500/20 to-yellow-500/0" },
-  { icon: "Group", title: "Group Discussion", desc: "Simulated GD with multiple AI personalities & a communication level.", tags: ["Leadership", "Listening", "Logic", "Participation"], color: "from-emerald-500/20 to-emerald-500/0" },
+  { icon: "Briefcase", title: "Interview", desc: "Face an AI HR round tailored to your role, company & job description.", tags: ["Confidence", "Eye contact", "Fluency", "Hiring probability"], color: "from-blue-500/20 to-blue-500/0" },
+  { icon: "Screen", title: "Presentation", desc: "Upload your PPT/PDF, present it, then survive the Ask Viva round.", tags: ["Voice clarity", "Pacing", "Engagement", "Explanation"], color: "from-cyan-500/20 to-cyan-500/0" },
+  { icon: "Mic", title: "Stage Speech", desc: "Own the stage - presence, delivery & body language, analyzed live.", tags: ["Stage presence", "Delivery", "Gestures", "Body language"], color: "from-yellow-500/20 to-yellow-500/0" },
+  { icon: "Group", title: "Group Discussion", desc: "Hold your own in a simulated GD against multiple AI personalities.", tags: ["Leadership", "Listening", "Logic", "Participation"], color: "from-emerald-500/20 to-emerald-500/0" },
 ];
 
 const FEATURES = [
-  { title: "Facial Expression", desc: "Detects micro-expressions, warmth and engagement." },
-  { title: "Eye Contact", desc: "Measures gaze steadiness and audience connection." },
-  { title: "Speech Analysis", desc: "Fluency, filler words, pacing and clarity." },
-  { title: "Gesture Tracking", desc: "Reads posture, hand movement and body language." },
+  { title: "Never seem checked out", desc: "We read micro-expressions, warmth and engagement in real time." },
+  { title: "Hold the room's attention", desc: "Gaze steadiness and audience connection, measured as you speak." },
+  { title: "Sound like you mean it", desc: "Fluency, filler words, pacing and clarity, scored live." },
+  { title: "Stand like you belong there", desc: "Posture, hand movement and body language, read on camera." },
 ];
 
 export default function Landing() {
@@ -33,10 +33,16 @@ export default function Landing() {
           Confid.ai coaches your interviews, presentations, speeches and group discussions.
         </p>
         <div className="mt-8 flex items-center justify-center gap-4">
-          <Link to="/signup" className="px-6 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90">
+          <Link to="/signup" aria-label="Sign up and start practicing free" className="px-6 py-3 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90">
             Start practicing free
           </Link>
+          <Link to="/how-it-works" aria-label="Learn how Confid.ai works" className="px-6 py-3 rounded-lg border border-white/15 text-gray-200 font-semibold hover:bg-white/5">
+            See how it works
+          </Link>
         </div>
+        <p className="mt-4 text-sm text-gray-500">
+          Built for students and job seekers preparing for the interviews, presentations and speeches that actually matter.
+        </p>
       </section>
 
       <section id="how" className="max-w-6xl mx-auto px-6 py-16">
@@ -52,7 +58,7 @@ export default function Landing() {
       </section>
 
       <section id="modes" className="max-w-6xl mx-auto px-6 py-16">
-        <h2 className="text-3xl md:text-4xl font-bold mb-10">Train for the moment that matters</h2>
+        <h2 className="text-3xl md:text-4xl font-bold mb-10">Choose your practice mode</h2>
         <div className="grid sm:grid-cols-2 gap-6">
           {MODES.map((m) => (
             <div key={m.title} className={`rounded-2xl border border-white/10 bg-gradient-to-br ${m.color} p-7`}>
@@ -63,14 +69,35 @@ export default function Landing() {
                   <span key={t} className="text-xs px-3 py-1 rounded-full border border-white/15 text-gray-300">{t}</span>
                 ))}
               </div>
-              <Link to="/signup" className="text-cyan-300 text-sm font-medium hover:underline">Launch {m.title}</Link>
+              <Link to="/signup" aria-label={`Launch ${m.title} practice mode`} className="text-cyan-300 text-sm font-medium hover:underline">Launch {m.title}</Link>
             </div>
           ))}
         </div>
       </section>
 
+      <section id="accessibility" className="max-w-6xl mx-auto px-6 py-16">
+        <h2 className="text-3xl md:text-4xl font-bold mb-4">Built to be usable by everyone</h2>
+        <p className="text-gray-400 max-w-2xl mb-8">
+          Confid.ai works across screen sizes and devices, supports keyboard navigation, and labels every interactive element for screen readers. We're actively extending accessibility further:
+        </p>
+        <div className="grid sm:grid-cols-3 gap-5">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+            <h3 className="font-semibold mb-1">Available now</h3>
+            <p className="text-sm text-gray-400">Responsive layout, keyboard-navigable forms, screen-reader labels on all buttons and links.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+            <h3 className="font-semibold mb-1">In progress</h3>
+            <p className="text-sm text-gray-400">Multilingual voice interface and text-to-speech feedback for low-literacy and vision-impaired users.</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+            <h3 className="font-semibold mb-1">Roadmap</h3>
+            <p className="text-sm text-gray-400">Low-bandwidth / IVR fallback mode for users with limited data access.</p>
+          </div>
+        </div>
+      </section>
+
       <footer className="border-t border-white/10 py-8 text-center text-sm text-gray-500">
-        Confid.ai - built as a practice project.
+        © {new Date().getFullYear()} Confid.ai - Practice. Perform. Get Hired.
       </footer>
     </div>
   );

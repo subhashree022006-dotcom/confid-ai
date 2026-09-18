@@ -52,6 +52,8 @@ export default function PrivacyPolicy() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-2">6. Data security</h2>
             <p>Passwords are hashed using industry-standard methods and are never stored in plain text. We take reasonable measures to protect your data, but no method of transmission or storage is 100% secure.</p>
+            <p className="mt-2">Confid.ai is built around consent-based data collection: camera and microphone access is only requested with your explicit permission before each practice session, and you can revoke access at any time through your browser or device settings. We do not collect Aadhaar numbers or any UIDAI-linked identifiers, and no biometric data is stored - all facial and gesture analysis is processed transiently to generate feedback and is not retained after your session ends.</p>
+            <p className="mt-2">We process personal data in line with the principles of India's Digital Personal Data Protection Act, 2023 (DPDP Act) - including purpose limitation, data minimization, storage limitation, and your rights to access, correct, and erase your data - and in accordance with applicable MeitY guidelines on data protection and IT security practices.</p>
           </section>
 
           <section>
