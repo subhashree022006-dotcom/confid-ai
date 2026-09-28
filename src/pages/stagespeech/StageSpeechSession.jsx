@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import posthog from "posthog-js";
 import Navbar from "../../components/Navbar.jsx";
 import CameraFeed from "../../components/CameraFeed.jsx";
 import AudioLevelMeter from "../../components/AudioLevelMeter.jsx";
@@ -13,9 +14,19 @@ export default function StageSpeechSession() {
   const [recording, setRecording] = useState(true);
   const samplesRef = useRef([]);
   const recognizerRef = useRef(null);
+  const startTimeRef = useRef(Date.now());
 
   useEffect(() => {
     if (!state) { navigate("/stagespeech"); return; }
+
+    posthog.capture("session_started", {
+      mode: "stagespeech",
+      answerMode: state.mode,
+      topic: state.topic,
+    });
+
+    startTimeRef.current = Date.now();
+
     if (state.mode === "voice") {
       recognizerRef.current = createContinuousRecognizer((t) => setTranscript((p) => (p + " " + t).trim()));
       recognizerRef.current?.start();
@@ -27,6 +38,13 @@ export default function StageSpeechSession() {
   function finishSpeech() {
     recognizerRef.current?.stop();
     setRecording(false);
+
+    posthog.capture("session_completed", {
+      mode: "stagespeech",
+      answerMode: state?.mode,
+      durationSeconds: (Date.now() - startTimeRef.current) / 1000,
+    });
+
     navigate("/stagespeech/results", { state: { ...state, samples: samplesRef.current, transcript: transcript.trim() } });
   }
 

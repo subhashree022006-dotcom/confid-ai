@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar.jsx";
+import ConsentModal from "../../components/ConsentModal.jsx";
+
+const CONSENT_KEY = "confidai_camera_consent";
 
 export default function GDSetup() {
   const navigate = useNavigate();
@@ -9,6 +12,7 @@ export default function GDSetup() {
   const [mode, setMode] = useState(null);
   const [cameraGranted, setCameraGranted] = useState(false);
   const [error, setError] = useState("");
+  const [showConsent, setShowConsent] = useState(false);
 
   async function requestCamera() {
     try {
@@ -18,6 +22,20 @@ export default function GDSetup() {
     } catch {
       setError("Camera/microphone permission is required.");
     }
+  }
+
+  function handleAllowClick() {
+    if (localStorage.getItem(CONSENT_KEY) === "true") {
+      requestCamera();
+    } else {
+      setShowConsent(true);
+    }
+  }
+
+  function handleConsentAgree() {
+    localStorage.setItem(CONSENT_KEY, "true");
+    setShowConsent(false);
+    requestCamera();
   }
 
   function start() {
@@ -51,7 +69,7 @@ export default function GDSetup() {
           </div>
           <div className="pt-2 border-t border-white/10">
             {!cameraGranted ? (
-              <button onClick={requestCamera} className="text-sm px-4 py-2 rounded-lg border border-white/15 hover:bg-white/5">Allow camera & microphone</button>
+              <button onClick={handleAllowClick} className="text-sm px-4 py-2 rounded-lg border border-white/15 hover:bg-white/5">Allow camera & microphone</button>
             ) : (
               <p className="text-sm text-emerald-400 font-medium">Camera & microphone ready</p>
             )}
@@ -60,6 +78,13 @@ export default function GDSetup() {
           <button onClick={start} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90">Start group discussion</button>
         </div>
       </main>
+
+      {showConsent && (
+        <ConsentModal
+          onAgree={handleConsentAgree}
+          onCancel={() => setShowConsent(false)}
+        />
+      )}
     </div>
   );
 }

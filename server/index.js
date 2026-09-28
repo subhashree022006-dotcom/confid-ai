@@ -1,5 +1,6 @@
 ﻿import express from "express";
 import cors from "cors";
+import crypto from "crypto";
 import Razorpay from "razorpay";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
@@ -49,7 +50,7 @@ const razorpay = new Razorpay({
 });
 
 const JWT_SECRET = process.env.JWT_SECRET;
-const FREE_SESSION_LIMIT = 4;
+const FREE_SESSION_LIMIT = 10;
 const FRONTEND_URL =
   process.env.FRONTEND_URL || "http://localhost:5173";
 
@@ -1905,6 +1906,64 @@ app.post(
       res.status(500).json({
         error: "Failed to save session",
       });
+    }
+  }
+);
+
+// ============================================================
+// FEEDBACK
+// ============================================================
+app.post(
+  "/api/feedback",
+  authMiddleware,
+  async (req, res) => {
+    try {
+      const { mode, rating, wouldRecommend, wouldPay, comments } = req.body;
+
+      if (!rating || rating < 1 || rating > 5) {
+        return res.status(400).json({ error: "Rating must be between 1 and 5." });
+      }
+
+      await pool.query(
+        `INSERT INTO feedback (user_id, mode, rating, would_recommend, would_pay, comments)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          req.userId,
+          mode || null,
+          rating,
+          wouldRecommend ?? null,
+          wouldPay ?? null,
+          comments || null,
+        ]
+      );
+
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("Feedback save failed:", err);
+      res.status(500).json({ error: "Failed to save feedback" });
+    }
+  }
+);
+
+// ============================================================
+// ADMIN: VIEW FEEDBACK
+// ============================================================
+app.get(
+  "/api/admin/feedback",
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT id, user_id, mode, rating, would_recommend, would_pay, comments, created_at
+         FROM feedback
+         ORDER BY created_at DESC
+         LIMIT 100`
+      );
+      res.json(result.rows);
+    } catch (err) {
+      console.error("Fetch feedback failed:", err);
+      res.status(500).json({ error: "Failed to fetch feedback" });
     }
   }
 );

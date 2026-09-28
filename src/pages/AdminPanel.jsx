@@ -17,6 +17,7 @@ export default function AdminPanel() {
   const [authorized, setAuthorized] = useState(false);
   const [pending, setPending] = useState([]);
   const [stats, setStats] = useState(null);
+  const [feedback, setFeedback] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState(null);
@@ -39,9 +40,10 @@ export default function AdminPanel() {
         Authorization: `Bearer ${token}`,
         "x-admin-password": adminPassword,
       };
-      const [pendingRes, statsRes] = await Promise.all([
+      const [pendingRes, statsRes, feedbackRes] = await Promise.all([
         fetch(`${API_BASE}/api/admin/pending-students`, { headers }),
         fetch(`${API_BASE}/api/admin/stats`, { headers }),
+        fetch(`${API_BASE}/api/admin/feedback`, { headers }),
       ]);
       const pendingData = await pendingRes.json();
       if (!pendingRes.ok) {
@@ -50,8 +52,10 @@ export default function AdminPanel() {
         return;
       }
       const statsData = await statsRes.json();
+      const feedbackData = await feedbackRes.json();
       setPending(pendingData);
       setStats(statsRes.ok ? statsData : null);
+      setFeedback(feedbackRes.ok ? feedbackData : []);
       setAuthorized(true);
       setLoading(false);
     } catch (err) {
@@ -268,6 +272,43 @@ export default function AdminPanel() {
             )}
           </div>
         )}
+
+        <div className="border-t border-white/10 pt-10 mb-12">
+          <h2 className="text-2xl font-bold mb-1">User feedback</h2>
+          <p className="text-gray-400 mb-6">{feedback.length} response{feedback.length === 1 ? "" : "s"}</p>
+
+          {feedback.length === 0 ? (
+            <p className="text-gray-500">No feedback submitted yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {feedback.map((f) => (
+                <div key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                    <div className="flex items-center gap-3">
+                      <p className="font-medium">{f.user_id}</p>
+                      <span className="text-xs text-gray-500">{MODE_LABELS[f.mode] || f.mode || "—"}</span>
+                    </div>
+                    <p className="text-xs text-gray-500">{new Date(f.created_at).toLocaleString()}</p>
+                  </div>
+
+                  <div className="flex items-center gap-4 mb-2 text-sm flex-wrap">
+                    <span className="text-cyan-300">{"★".repeat(f.rating)}{"☆".repeat(5 - f.rating)}</span>
+                    <span className={f.would_recommend ? "text-emerald-400" : "text-gray-500"}>
+                      Recommend: {f.would_recommend === null ? "—" : f.would_recommend ? "Yes" : "No"}
+                    </span>
+                    <span className={f.would_pay ? "text-emerald-400" : "text-gray-500"}>
+                      Would pay: {f.would_pay === null ? "—" : f.would_pay ? "Yes" : "No"}
+                    </span>
+                  </div>
+
+                  {f.comments && (
+                    <p className="text-sm text-gray-300 mt-2 italic">"{f.comments}"</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="mb-12">
           <h2 className="text-2xl font-bold mb-1">Look up user &amp; manage plan</h2>

@@ -81,5 +81,19 @@ export async function initDb() {
     ON ats_checks (user_id, created_at DESC);
   `);
 
-  console.log("Database ready: users, sessions, and ats_checks tables exist");
+  // Feedback from users after practice sessions — used to validate product-market fit
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS feedback (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+      mode TEXT,
+      rating INTEGER,
+      would_recommend BOOLEAN,
+      would_pay BOOLEAN,
+      comments TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+
+  console.log("Database ready: users, sessions, ats_checks, and feedback tables exist");
 }

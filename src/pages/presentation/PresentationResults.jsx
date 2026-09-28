@@ -11,6 +11,7 @@ import {
   computeOverallScore,
   buildBehavioralSummary,
 } from "../../utils/analysis.js";
+import FeedbackModal from "../../components/FeedbackModal.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
@@ -22,6 +23,7 @@ export default function PresentationResults() {
   const [analyzing, setAnalyzing] = useState(true);
   const [aiResult, setAiResult] = useState(null);
   const [previousSession, setPreviousSession] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   if (!state) { navigate("/presentation"); return null; }
 
@@ -117,6 +119,7 @@ export default function PresentationResults() {
   useEffect(() => {
     if (savedRef.current || !user || analyzing) return;
     savedRef.current = true;
+    setShowFeedback(true);
     saveSession({
       mode: "presentation",
       topicOrRole: topic,
@@ -133,8 +136,6 @@ export default function PresentationResults() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [analyzing]);
 
-  // Compares this session's metrics against the previous session's goals,
-  // to show a simple ✅/⚠️ outcome for each goal the user was working on.
   function evaluateGoalOutcome(goalTitle) {
     const title = (goalTitle || "").toLowerCase();
     if (title.includes("filler")) {
@@ -266,6 +267,10 @@ export default function PresentationResults() {
 
         <button onClick={() => navigate("/dashboard")} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90">Back to dashboard</button>
       </main>
+
+      {showFeedback && (
+        <FeedbackModal mode="presentation" onClose={() => setShowFeedback(false)} />
+      )}
     </div>
   );
 }

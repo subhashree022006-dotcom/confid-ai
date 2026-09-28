@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import posthog from "posthog-js";
 import Navbar from "../../components/Navbar.jsx";
 import CameraFeed from "../../components/CameraFeed.jsx";
 import AudioLevelMeter from "../../components/AudioLevelMeter.jsx";
@@ -22,6 +23,13 @@ export default function PresentationSession() {
 
   useEffect(() => {
     if (!state) { navigate("/presentation"); return; }
+
+    posthog.capture("session_started", {
+      mode: "presentation",
+      answerMode: state.mode,
+      topic: state.topic,
+    });
+
     if (state.mode === "voice") {
       recognizerRef.current = createContinuousRecognizer((t) => setTranscript((p) => (p + " " + t).trim()));
       recognizerRef.current?.start();
@@ -51,6 +59,13 @@ export default function PresentationSession() {
     recognizerRef.current?.stop();
     clearInterval(durationTimerRef.current);
     setRecording(false);
+
+    posthog.capture("session_completed", {
+      mode: "presentation",
+      answerMode: state?.mode,
+      durationSeconds: (Date.now() - startTimeRef.current) / 1000,
+    });
+
     navigate("/presentation/viva", { state: { ...state, samples: samplesRef.current, transcript: transcript.trim() } });
   }
 

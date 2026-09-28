@@ -11,6 +11,7 @@ import {
   computeOverallScore,
   buildBehavioralSummary,
 } from "../../utils/analysis.js";
+import FeedbackModal from "../../components/FeedbackModal.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
@@ -22,6 +23,7 @@ export default function StageSpeechResults() {
   const [analyzing, setAnalyzing] = useState(true);
   const [aiResult, setAiResult] = useState(null);
   const [previousSession, setPreviousSession] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   if (!state) { navigate("/stagespeech"); return null; }
 
@@ -116,6 +118,7 @@ export default function StageSpeechResults() {
   useEffect(() => {
     if (savedRef.current || !user || analyzing) return;
     savedRef.current = true;
+    setShowFeedback(true);
     saveSession({
       mode: "stagespeech",
       topicOrRole: topic,
@@ -263,6 +266,10 @@ export default function StageSpeechResults() {
 
         <button onClick={() => navigate("/dashboard")} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90">Back to dashboard</button>
       </main>
+
+      {showFeedback && (
+        <FeedbackModal mode="stagespeech" onClose={() => setShowFeedback(false)} />
+      )}
     </div>
   );
 }

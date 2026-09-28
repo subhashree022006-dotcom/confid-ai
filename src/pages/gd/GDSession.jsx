@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import posthog from "posthog-js";
 import Navbar from "../../components/Navbar.jsx";
 import CameraFeed from "../../components/CameraFeed.jsx";
 import AudioLevelMeter from "../../components/AudioLevelMeter.jsx";
@@ -41,6 +42,13 @@ export default function GDSession() {
 
   useEffect(() => {
     if (!state) { navigate("/gd"); return; }
+
+    posthog.capture("session_started", {
+      mode: "gd",
+      answerMode: state.mode,
+      position: state.position,
+      topic: state.topic,
+    });
 
     startTimeRef.current = Date.now();
     durationTimerRef.current = setInterval(() => {
@@ -141,6 +149,14 @@ export default function GDSession() {
     clearTimeout(silenceTimerRef.current);
     recognizerRef.current?.stop();
     setFinished(true);
+
+    posthog.capture("session_completed", {
+      mode: "gd",
+      answerMode: state?.mode,
+      rounds: round,
+      durationSeconds: (Date.now() - startTimeRef.current) / 1000,
+    });
+
     const userTranscript = messagesRef.current.filter((m) => m.role === "user").map((m) => m.content).join(" ");
     navigate("/gd/results", { state: { ...state, samples: samplesRef.current, transcript: userTranscript } });
   }

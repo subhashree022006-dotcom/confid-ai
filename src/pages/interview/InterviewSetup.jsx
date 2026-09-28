@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Navbar from "../../components/Navbar.jsx";
+import ConsentModal from "../../components/ConsentModal.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 const TOKEN_KEY = "confidai_token";
+const CONSENT_KEY = "confidai_camera_consent";
 
 export default function InterviewSetup() {
   const navigate = useNavigate();
@@ -11,6 +13,7 @@ export default function InterviewSetup() {
   const [mode, setMode] = useState(null);
   const [cameraGranted, setCameraGranted] = useState(false);
   const [error, setError] = useState("");
+  const [showConsent, setShowConsent] = useState(false);
 
   const [resumeFile, setResumeFile] = useState(null);
   const [resumeText, setResumeText] = useState("");
@@ -26,6 +29,20 @@ export default function InterviewSetup() {
     } catch {
       setError("Camera/microphone permission is required.");
     }
+  }
+
+  function handleAllowClick() {
+    if (localStorage.getItem(CONSENT_KEY) === "true") {
+      requestCamera();
+    } else {
+      setShowConsent(true);
+    }
+  }
+
+  function handleConsentAgree() {
+    localStorage.setItem(CONSENT_KEY, "true");
+    setShowConsent(false);
+    requestCamera();
   }
 
   async function handleResumeChange(e) {
@@ -126,7 +143,7 @@ export default function InterviewSetup() {
 
           <div className="pt-2 border-t border-white/10">
             {!cameraGranted ? (
-              <button onClick={requestCamera} className="text-sm px-4 py-2 rounded-lg border border-white/15 hover:bg-white/5">Allow camera & microphone</button>
+              <button onClick={handleAllowClick} className="text-sm px-4 py-2 rounded-lg border border-white/15 hover:bg-white/5">Allow camera & microphone</button>
             ) : (
               <p className="text-sm text-emerald-400 font-medium">Camera & microphone ready</p>
             )}
@@ -135,6 +152,13 @@ export default function InterviewSetup() {
           <button onClick={startInterview} disabled={resumeUploading} className="w-full py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-400 text-slate-950 font-semibold hover:opacity-90 disabled:opacity-50">Start trial interview</button>
         </div>
       </main>
+
+      {showConsent && (
+        <ConsentModal
+          onAgree={handleConsentAgree}
+          onCancel={() => setShowConsent(false)}
+        />
+      )}
     </div>
   );
 }

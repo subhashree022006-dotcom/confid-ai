@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import posthog from "posthog-js";
 import Navbar from "../../components/Navbar.jsx";
 import CameraFeed from "../../components/CameraFeed.jsx";
 import AudioLevelMeter from "../../components/AudioLevelMeter.jsx";
@@ -52,6 +53,13 @@ export default function InterviewSession() {
 
   useEffect(() => {
     if (!form) { navigate("/interview"); return; }
+
+    posthog.capture("session_started", {
+      mode: "interview",
+      answerMode: form.mode,
+      position: form.position,
+      company: form.company,
+    });
 
     startTimeRef.current = Date.now();
     durationTimerRef.current = setInterval(() => {
@@ -195,6 +203,14 @@ export default function InterviewSession() {
     const videoBlob = await stopRecordingAndGetBlob();
 
     setFinished(true);
+
+    posthog.capture("session_completed", {
+      mode: "interview",
+      answerMode: form?.mode,
+      questionCount,
+      durationSeconds: getElapsedSeconds(),
+    });
+
     const fullTranscript = messagesRef.current.filter((m) => m.role === "user").map((m) => m.content).join(" ");
     navigate("/interview/results", {
       state: {

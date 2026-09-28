@@ -1,5 +1,6 @@
 ﻿import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import posthog from "posthog-js";
 import { useAuth } from "../context/AuthContext.jsx";
 import Navbar from "../components/Navbar.jsx";
 import PasswordInput from "../components/PasswordInput.jsx";
@@ -21,6 +22,8 @@ export default function Signup() {
     const result = await signup(userId.trim(), password);
     setLoading(false);
     if (!result.ok) { setError(result.error); return; }
+    posthog.capture("signup_completed", { userId: userId.trim() });
+    posthog.identify(userId.trim());
     navigate("/dashboard");
   }
   return (

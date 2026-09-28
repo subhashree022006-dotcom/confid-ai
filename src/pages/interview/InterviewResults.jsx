@@ -11,6 +11,7 @@ import {
   computeOverallScore,
   buildBehavioralSummary,
 } from "../../utils/analysis.js";
+import FeedbackModal from "../../components/FeedbackModal.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
@@ -33,6 +34,7 @@ export default function InterviewResults() {
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoUploading, setVideoUploading] = useState(false);
   const [previousSession, setPreviousSession] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   if (!state) {
     navigate("/interview");
@@ -44,13 +46,11 @@ export default function InterviewResults() {
   const gesture = computeGestureScore(samples);
   const behavioralSummary = buildBehavioralSummary(samples);
 
-  // Rough session duration from the behavioral sample timestamps (ms apart, first to last)
   const sessionDurationSeconds =
     samples && samples.length > 1
       ? Math.round((samples[samples.length - 1].timestamp - samples[0].timestamp) / 1000)
       : null;
 
-  // Fetch the previous interview session (for its goals) once we know the user.
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
@@ -114,9 +114,6 @@ export default function InterviewResults() {
       }
     }
 
-    // Wait for the previous-session lookup to resolve (or fail) before analyzing,
-    // so previousGoals context is available on the first request. If the user
-    // has no history, previousSession stays null and previousGoals is just null.
     analyze();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -152,6 +149,7 @@ export default function InterviewResults() {
   useEffect(() => {
     if (savedRef.current || !user || analyzing || videoUploading) return;
     savedRef.current = true;
+    setShowFeedback(true);
     saveSession({
       mode: "interview",
       topicOrRole: `${form?.position || ""} at ${form?.company || ""}`.trim(),
@@ -176,8 +174,6 @@ export default function InterviewResults() {
     videoRef.current.play();
   }
 
-  // Compares this session's metrics against the previous session's goals,
-  // to show a simple ✅/⚠️ outcome for each goal the user was working on.
   function evaluateGoalOutcome(goalTitle) {
     const title = goalTitle.toLowerCase();
     if (title.includes("filler")) {
@@ -363,6 +359,10 @@ export default function InterviewResults() {
           Back to dashboard
         </button>
       </main>
+
+      {showFeedback && (
+        <FeedbackModal mode="interview" onClose={() => setShowFeedback(false)} />
+      )}
     </div>
   );
 }
